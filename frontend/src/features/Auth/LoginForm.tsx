@@ -1,33 +1,39 @@
 // 📁 frontend/src/features/Auth/LoginForm.tsx
 import React, { useState } from 'react';
-import { handleLoginSubmit } from './loginHandler'; // 같은 폴더니까 ./ 경로
-import { useAuth } from '../../context/AuthContext'; // 🔁 context에서 가져오기
+import { useNavigate } from 'react-router-dom';
+import { handleLoginSubmit } from './loginHandler';
+import { useAuth } from '../../context/AuthContext';
 
 function LoginForm() {
-  // 사용자 입력 상태
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  /** ----------------------------- state ----------------------------- */
+  const [id, setId] = useState<string>('');           // ← id(=username)
+  const [pw, setPw] = useState<string>('');           // ← pw(=password)
 
-  // 전역 상태 관리 훅 (userNo 저장용)
-  const { setUserNo } = useAuth();
+  /** ----------------------------- hooks ----------------------------- */
+  const { setUserNo } = useAuth();                    // 전역 userNo 저장
+  const navigate = useNavigate();                     // 라우터 이동
 
-  // 로그인 폼 제출 핸들러
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  /** --------------------------- handlers ---------------------------- */
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await handleLoginSubmit(username, password, setUserNo); // 서버 요청 및 전역 저장
+
+    const ok = await handleLoginSubmit(id, pw, setUserNo); // 로그인 요청
+    if (ok) navigate('/dashboard');
+    else     alert('아이디 또는 비밀번호가 올바르지 않습니다.');
   };
 
+  /** --------------------------- render ------------------------------ */
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100">
-      <form onSubmit={handleLogin} className="bg-white p-8 rounded shadow-md w-80">
+      <form onSubmit={onSubmit} className="bg-white p-8 rounded shadow-md w-80">
         <h2 className="text-2xl font-bold mb-6 text-center">로그인</h2>
 
         <input
           type="text"
           placeholder="아이디"
           className="w-full mb-4 px-4 py-2 border border-gray-300 rounded"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          value={id}
+          onChange={(e) => setId(e.target.value)}
           required
         />
 
@@ -35,8 +41,8 @@ function LoginForm() {
           type="password"
           placeholder="비밀번호"
           className="w-full mb-6 px-4 py-2 border border-gray-300 rounded"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
           required
         />
 

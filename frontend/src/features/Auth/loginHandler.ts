@@ -19,9 +19,11 @@ export const handleLoginSubmit = async (
     localStorage.setItem('token', token);
     setUserNo(user_no);
     alert(`로그인에 성공했습니다!\n사용자 번호: ${user_no}`);
+    return true;
   } catch (error) {
     console.error('로그인 실패:', error);
     alert('로그인에 실패했습니다.');
+    return false;
   }
 };
 
