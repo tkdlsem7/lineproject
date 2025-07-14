@@ -18,15 +18,18 @@ const lineSections: LineSection[] = [
 ];
 
 /* ──────────────────────────────────────────────────────────────── */
-/* ① Dashboard에서 progressMap을 prop으로 받아오기               */
+/* ① Dashboard에서 equipMap을 prop으로 받아오기 (machineId + progress + shippingDate) */
 interface Props {
-  /** slot_code ➜ machine_id 매핑 (Map) */
-  progressMap: Map<string, string>;
+  equipMap: Map<string, {
+    machineId: string;
+    progress: number;
+    shippingDate: string;
+  }>;
 }
-function ABuildingView({ progressMap }: Props) {
+function ABuildingView({ equipMap }: Props) {
 /* ──────────────────────────────────────────────────────────────── */
 
-  const leftLines  = ['B라인', 'D라인', 'F라인'];
+  const leftLines = ['B라인', 'D라인', 'F라인'];
   const rightLines = ['A라인', 'C라인', 'E라인'];
 
   const renderLine = ({ title, machines }: LineSection) => (
@@ -35,14 +38,20 @@ function ABuildingView({ progressMap }: Props) {
 
       <div className="grid grid-cols-5 gap-x-12 gap-y-12">
         {machines.map((slotCode) => {
-          /* ② 매핑된 machine_id 찾기 (없으면 undefined) */
-          const machineId = progressMap.get(slotCode);
+          const equip = equipMap.get(slotCode);
+          const machineId = equip?.machineId;
+          const progress = equip?.progress;
+          const shippingDate = equip?.shippingDate;
 
           return (
             <div key={slotCode} className="flex flex-col items-center gap-3">
               <span className="font-semibold">{slotCode}</span>
-              {/* machineId를 MachineButton에 전달 ⭐ */}
-              <MachineButton slotCode={slotCode} machineId={machineId} />
+              <MachineButton
+                slotCode={slotCode}
+                machineId={machineId}
+                progress={progress}
+                shippingDate={shippingDate}
+              />
             </div>
           );
         })}

@@ -4,36 +4,43 @@ import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /* ────────────────────────────────────────────────────────── */
-/* ① prop 타입 확장 : slotCode + machineId                   */
+/* ① prop 타입 확장: slotCode + machineId + progress + shippingDate */
 interface MachineButtonProps {
   slotCode: string;            // ex) "B6"
-  machineId?: string | null;   // ex) "J-07-02" (없으면 undefined)
+  machineId?: string | null;   // ex) "J-07-02"
+  progress?: number | null;    // ex) 75
+  shippingDate?: string | null; // ex) "2025-07-30"
 }
 /* ────────────────────────────────────────────────────────── */
 
 /**
  * 배치도용 공용 버튼
- * - 버튼 안에 machineId를 표시(없으면 빈칸)
+ * - machineId / 진척도 / 출하일 표시
  * - 클릭 → 팝업 메뉴(체크리스트 / 장비 정보 입력) → 라우팅
  */
-export default function MachineButton({ slotCode, machineId }: MachineButtonProps) {
+export default function MachineButton({ slotCode, machineId, progress, shippingDate }: MachineButtonProps) {
   const nav = useNavigate();
 
-  /* ② URL용 ID: machineId 우선, 없으면 slotCode */
+  /* URL용 ID: machineId 우선, 없으면 slotCode 사용 */
   const idForPath = machineId ?? slotCode;
   const go = (path: string) => () => nav(`/equipment/${idForPath}/${path}`);
+
+  /* 출하일 포맷 (YYYY-MM-DD → MM-DD 로 잘라서 보여줌) */
+  const formattedShippingDate = shippingDate ? shippingDate.slice(5) : '';
 
   return (
     <Popover className="relative">
       {/* 실제 클릭 영역 */}
       <Popover.Button
         aria-label={slotCode}
-        className="w-32 h-16 rounded-md bg-indigo-600 hover:bg-indigo-700
+        className="w-32 h-20 rounded-md bg-indigo-600 hover:bg-indigo-700
                    transition active:scale-[.97] focus:outline-none shadow-lg
-                   flex items-center justify-center text-white text-sm font-medium"
+                   flex flex-col items-center justify-center text-white text-xs font-medium space-y-[2px] text-center"
       >
-        {/* ③ 버튼 안에 machineId 표시 (없으면 공백) */}
-        {machineId ?? ''}
+        {/* 버튼 내부 표시 */}
+        <span className="text-sm font-semibold">{machineId ?? ''}</span>
+        <span>{progress != null ? `진척도: ${progress}%` : ''}</span>
+        <span>{formattedShippingDate ? `출하: ${formattedShippingDate}` : ''}</span>
       </Popover.Button>
 
       {/* ----- 팝업 메뉴 ----- */}

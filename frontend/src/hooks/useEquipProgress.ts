@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 export interface EquipProgress {
   slot_code: string;
   machine_id: string;
+  progress: number;
+  shipping_date: string;
 }
 
 export function useEquipProgress() {
