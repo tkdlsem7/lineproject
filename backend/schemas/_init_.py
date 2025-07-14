@@ -3,5 +3,7 @@ from pydantic import BaseModel
 class EquipProgressOut(BaseModel):
     slot_code: str
     machine_id: str
-    class Config:
-        orm_mode = True
+    
+    model_config = {
+        "from_attributes": True
+    }
