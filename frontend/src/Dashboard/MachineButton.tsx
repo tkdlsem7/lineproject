@@ -3,23 +3,38 @@ import { Popover, Menu, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+/* ────────────────────────────────────────────────────────── */
+/* ① prop 타입 확장 : slotCode + machineId                   */
+interface MachineButtonProps {
+  slotCode: string;            // ex) "B6"
+  machineId?: string | null;   // ex) "J-07-02" (없으면 undefined)
+}
+/* ────────────────────────────────────────────────────────── */
+
 /**
  * 배치도용 공용 버튼
- * - 버튼 자체에는 텍스트가 없고(빈 사각형) ID를 aria-label로만 남김
+ * - 버튼 안에 machineId를 표시(없으면 빈칸)
  * - 클릭 → 팝업 메뉴(체크리스트 / 장비 정보 입력) → 라우팅
  */
-export default function MachineButton({ id }: { id: string }) {
+export default function MachineButton({ slotCode, machineId }: MachineButtonProps) {
   const nav = useNavigate();
-  const go = (path: string) => () => nav(`/equipment/${id}/${path}`);
+
+  /* ② URL용 ID: machineId 우선, 없으면 slotCode */
+  const idForPath = machineId ?? slotCode;
+  const go = (path: string) => () => nav(`/equipment/${idForPath}/${path}`);
 
   return (
     <Popover className="relative">
-      {/* 실제 클릭 영역(빈 사각형) */}
+      {/* 실제 클릭 영역 */}
       <Popover.Button
-        aria-label={id}
+        aria-label={slotCode}
         className="w-32 h-16 rounded-md bg-indigo-600 hover:bg-indigo-700
-                   transition active:scale-[.97] focus:outline-none shadow-lg"
-      />
+                   transition active:scale-[.97] focus:outline-none shadow-lg
+                   flex items-center justify-center text-white text-sm font-medium"
+      >
+        {/* ③ 버튼 안에 machineId 표시 (없으면 공백) */}
+        {machineId ?? ''}
+      </Popover.Button>
 
       {/* ----- 팝업 메뉴 ----- */}
       <Transition

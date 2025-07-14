@@ -17,7 +17,15 @@ const lineSections: LineSection[] = [
   { title: 'F라인', machines: ['F5', 'F4', 'F3', 'F2', 'F1', 'F10', 'F9', 'F8', 'F7', 'F6'] },
 ];
 
-function ABuildingView() {
+/* ──────────────────────────────────────────────────────────────── */
+/* ① Dashboard에서 progressMap을 prop으로 받아오기               */
+interface Props {
+  /** slot_code ➜ machine_id 매핑 (Map) */
+  progressMap: Map<string, string>;
+}
+function ABuildingView({ progressMap }: Props) {
+/* ──────────────────────────────────────────────────────────────── */
+
   const leftLines  = ['B라인', 'D라인', 'F라인'];
   const rightLines = ['A라인', 'C라인', 'E라인'];
 
@@ -25,14 +33,19 @@ function ABuildingView() {
     <section key={title} className="mb-20">
       <h3 className="text-2xl font-bold text-center mb-6">{title}</h3>
 
-      {/* 버튼 간격(gap-x/y)과 버튼 크기(w-32 h-16)는 Tailwind util로 조정 */}
       <div className="grid grid-cols-5 gap-x-12 gap-y-12">
-        {machines.map((name) => (
-          <div key={name} className="flex flex-col items-center gap-3">
-            <span className="font-semibold">{name}</span>
-            <MachineButton id={name} />
-          </div>
-        ))}
+        {machines.map((slotCode) => {
+          /* ② 매핑된 machine_id 찾기 (없으면 undefined) */
+          const machineId = progressMap.get(slotCode);
+
+          return (
+            <div key={slotCode} className="flex flex-col items-center gap-3">
+              <span className="font-semibold">{slotCode}</span>
+              {/* machineId를 MachineButton에 전달 ⭐ */}
+              <MachineButton slotCode={slotCode} machineId={machineId} />
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -44,8 +57,7 @@ function ABuildingView() {
         {lineSections.filter((s) => leftLines.includes(s.title)).map(renderLine)}
       </div>
 
-      {/* 중앙 세로선 */}
-      <div className="w-px bg-gray-400" />
+      <div className="w-px bg-gray-400" /> {/* 중앙 세로선 */}
 
       {/* ─── 우측 컬럼 (A, C, E) ─── */}
       <div className="flex-1">

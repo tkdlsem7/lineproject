@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String
-from db.database import Base
+from backend.db.database import Base
 
 class User(Base):
     __tablename__ = "users"  # ✅ 테이블 이름과 정확히 일치

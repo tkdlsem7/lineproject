@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from db.database import SessionLocal  # ✅ 현재 구조에서 올바른 경로
-from models.user import User          # ✅ models도 마찬가지로 직접 import
+from backend.db.database import SessionLocal
+from backend.models.user import User          # ✅ models도 마찬가지로 직접 import
 
 
 

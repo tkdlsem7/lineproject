@@ -1,22 +1,21 @@
-// 📁 App.tsx
+// App.tsx (수정)
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';  // BrowserRouter 삭제
 import './App.css';
-import LoginForm from './features/Auth/LoginForm';
-import Dashboard from './Dashboard/Dashboard';   // 폴더에 맞춰 경로 수정
+
+import LoginForm     from './features/Auth/LoginForm';
+import Dashboard     from './Dashboard/Dashboard';
 import ChecklistPage from './Equipment/ChecklistPage';
-import InfoPage from './Equipment/FormFields';
+import InfoPage      from './Equipment/FormFields';
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<LoginForm />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/equipment/:id/checklist" element={<ChecklistPage />} />
-        <Route path="/equipment/:id/edit"      element={<InfoPage />} />
-      </Routes>
-    </Router>
+    <Routes>
+      <Route path="/" element={<LoginForm />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/equipment/:id/checklist" element={<ChecklistPage />} />
+      <Route path="/equipment/:id/edit"      element={<InfoPage />} />
+    </Routes>
   );
 }
 
