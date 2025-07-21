@@ -11,6 +11,7 @@ export interface EquipmentDTO {
   customer: string;
   manager: string;
   note: string;
+  slotCode: string; 
 }
 
 /* ----------------------------- GET ----------------------------- */
@@ -19,4 +20,4 @@ export const fetchEquipment = (machineId: string) =>
 
 /* ---------------------------- POST ----------------------------- */
 export const saveEquipment = (data: EquipmentDTO) =>
-  http.post<EquipmentDTO>('/equipment', data).then(r => r.data);
+  http.post<EquipmentDTO>('/equipment/', data).then(r => r.data);

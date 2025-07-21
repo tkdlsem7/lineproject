@@ -1,71 +1,123 @@
 // 📁 src/Equipment/FormFields.tsx
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { format, parseISO } from 'date-fns';          // 📦 날짜 변환 유틸
 import { useEquipment } from '../hooks/fieldinput';
 import type { EquipmentDTO } from './equipment';
+import { useLocation } from 'react-router-dom';
+
+/* ────────────────────────────────────────────────────────────── */
+/* ✨ 1) 폼 전용 타입 (shippingDate를 Date로 변환)                 */
+/*    - UI ↔ hook 사이에서만 사용하고, 서버 전송 전엔             */
+/*      다시 EquipmentDTO 형태(string)로 직렬화한다               */
+/* ────────────────────────────────────────────────────────────── */
+type EquipmentForm = Omit<EquipmentDTO, 'shippingDate'> & {
+  shippingDate: Date | null;   // Date 객체 (null 허용)
+};
+
 
 /* ------------------------------------------------------------------ */
 /* 📝 입력 폼 컴포넌트                                                 */
-/*    - /equipment/:id   → 수정 모드 (id 파라미터 존재)               */
-/*    - /equipment/new   → 신규 모드 (id 없음)                        */
 /* ------------------------------------------------------------------ */
 export default function FormFields() {
   const nav = useNavigate();
   const { id } = useParams<{ id?: string }>(); // id === machineId
-  console.log('🧭 id 파라미터:', id);
+  const machineIdParam = id ?? '';
+  console.log(id);
+
+  const { state } = useLocation() as {
+    state?: { slotCode?: string };
+  };
 
   const {
-    data,            // 장비 데이터 (EquipmentDTO)
-    isPending,       // 로딩
-    error,           // 에러
-    save,            // 저장 함수 (POST /api/equipment)
-    saving,          // 저장 중?
+    data,           // 장비 데이터 (EquipmentDTO)
+    isPending,      // 로딩
+    error,          // 에러
+    save,           // 저장 함수 (POST /api/equipment)
+    saving,         // 저장 중?
   } = useEquipment(id);
 
-  /* ----------------------- 로컬 폼 상태 ----------------------- */
-  const [form, setForm] = useState<EquipmentDTO>({
-    machineId: '',                 // ★ 변경: 초깃값 공란
-    progress: 0,
-    shippingDate: '',
-    customer: '',
-    manager: '',
-    note: '',
+  /* ───────────────────────── 로컬 폼 상태 ──────────────────────── */
+  const [form, setForm] = useState<EquipmentForm>({
+    machineId: '',
+    progress:   0,
+    shippingDate: null,        // Date 객체
+    customer:   '',
+    manager:    '',
+    note:       '',
+    slotCode: state?.slotCode ?? '',
   });
 
-  /* 서버에서 가져온 데이터를 폼에 주입 ------------------------- */
+  /* ───────────── 서버 데이터 → 폼으로 주입 (수정 모드) ─────────── */
   useEffect(() => {
     if (data) {
-      setForm(data);               // 수정 모드: DB 값 주입
+      setForm({
+        ...data,
+        shippingDate: parseISO(data.shippingDate), // 'YYYY-MM-DD' → Date
+      });
     }
   }, [data]);
 
-  /* 공통 입력 핸들러 ------------------------------------------- */
+  /* ───────────── 공통 입력 핸들러 ───────────── */
   const handleChange =
-    (key: keyof EquipmentDTO) =>
+    (key: keyof EquipmentForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const raw = e.target.value;
+
+      // key별 형식 변환
       const value =
-        key === 'progress' ? Number(e.target.value) : e.target.value;
-      setForm(prev => ({ ...prev, [key]: value }));
+        key === 'progress'        ? Number(raw)              // range → number
+      : key === 'shippingDate'    ? (raw ? parseISO(raw) : null) // date → Date/null
+      :                             raw;                     // 나머진 string
+
+      setForm(prev => ({ ...prev, [key]: value as any }));
     };
 
-  /* 저장 ------------------------------------------------------- */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await save(form); // INSERT or UPDATE
-      nav(-1);          // 뒤로가기
-    } catch (err) {
-      console.error(err);
-      alert('저장 실패! 콘솔을 확인하세요.');
-    }
+  /* ───────────── 저장 로직 ───────────── */
+// (FormFields.tsx 중 handleSubmit 부분만 발췌)
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  /* 1) 기본 입력 검증 ------------------------------------------- */
+  if (!form.machineId.trim()) {
+    return alert('Machine ID는 필수입니다.');
+  }
+  if (!form.shippingDate) {
+    return alert('출하일을 선택하세요.');
+  }
+
+  const slotCode =
+  form.slotCode.trim() !== ''          // UPDATE 모드라면 기존 값 유지
+    ? form.slotCode.trim()
+    : machineIdParam || form.machineId // INSERT 모드 기본값
+
+  /* 2) 직렬화(Date → "YYYY-MM-DD") ------------------------------- */
+  const payload: EquipmentDTO = {
+    ...form,
+    slotCode,
+    shippingDate: format(form.shippingDate, 'yyyy-MM-dd'),
   };
 
-  /* 로딩 / 에러 상태 ------------------------------------------- */
+  /* 3) ───────────── 디버깅용 로그 ───────────── */
+  console.log('[SAVE PAYLOAD]', payload);
+
+  /* 4) 저장 ------------------------------------------------------ */
+  try {
+    await save(payload);   // INSERT or UPDATE
+    alert("저장에 성공했습니다.");
+    nav(-1);               // 뒤로가기
+  } catch (err) {
+    console.error('[SAVE ERROR]', err);
+    alert('저장 실패! 콘솔을 확인하세요.');
+  }
+};
+
+
+  /* ───────────── 로딩 / 에러 UI ───────────── */
   if (isPending)
     return (
       <p className="p-8 text-center text-gray-600">Loading equipment…</p>
     );
-
   if (error)
     return (
       <p className="p-8 text-center text-red-500">
@@ -73,7 +125,7 @@ export default function FormFields() {
       </p>
     );
 
-  /* ----------------------- 렌더링 ------------------------------ */
+  /* ───────────── 렌더링 ───────────── */
   return (
     <form
       onSubmit={handleSubmit}
@@ -114,7 +166,8 @@ export default function FormFields() {
           <label className="label">출하일 *</label>
           <input
             type="date"
-            value={form.shippingDate}
+            /* Date → 'YYYY-MM-DD'  (input type=date는 문자열만 받음) */
+            value={form.shippingDate ? format(form.shippingDate, 'yyyy-MM-dd') : ''}
             onChange={handleChange('shippingDate')}
             required
             className="input"
@@ -174,7 +227,7 @@ export default function FormFields() {
 }
 
 /* ------------------------------------------------------------------ */
-/* 🎨 Tailwind 공통 유틸 (globals.css 등)                              */
+/* 🎨 Tailwind 공통 유틸 (globals.css 등) — 변경 없음                 */
 /* ------------------------------------------------------------------
 .label        { @apply block mb-1 font-medium text-sm text-gray-700; }
 .input        { @apply w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500; }

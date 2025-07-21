@@ -1,0 +1,50 @@
+services:
+  # ──────────────────────────
+  # 1) PostgreSQL
+  # ──────────────────────────
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mes_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # ──────────────────────────
+  # 2) FastAPI backend
+  # ──────────────────────────
+  backend:
+    build:
+      context: ./backend      # ← backend 폴더 기준으로 빌드
+    env_file: .env
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app        # ← 코드 바인드 → --reload 바로 반영
+
+  # ──────────────────────────
+  # 3) React frontend (Vite dev server)
+  # ──────────────────────────
+  frontend:
+    build:
+      context: ./frontend     # ← frontend 폴더 기준으로 빌드
+    env_file: .env
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app       # ← 코드 바인드 → hot-reload
+    
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      CHOKIDAR_USEPOLLING: "true" 
+
+volumes:
+  pgdata: {}

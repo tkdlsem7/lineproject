@@ -8,25 +8,13 @@ import {
 } from '../Equipment/equipment';
 import type { EquipmentDTO } from '../Equipment/equipment';
 
-/* ------------------------------------------------------------------ */
-/* 🪝 useEquipment                                                     */
-/*   ① machineId 가 있으면: GET 요청 → 장비 정보 가져옴                */
-/*      ─ 200: data = EquipmentDTO                                    */
-/*      ─ 404: data = null   (※ 신규 입력 폼)                           */
-/*   ② save() 호출: POST 요청 → INSERT or UPDATE                      */
-/*      성공 시 React-Query 캐시를 최신 데이터로 갱신                  */
-/* ------------------------------------------------------------------ */
 export const useEquipment = (machineId?: string) => {
   const qc = useQueryClient();
   const queryKey = ['equipment', machineId]; // 캐시 키
 
-  /* -------------------------------------------------------------- */
-  /* 1) 단건 조회 (GET)                                              */
-  /* -------------------------------------------------------------- */
   const query = useQuery<EquipmentDTO | null>({
     queryKey,
     enabled: !!machineId, // machineId 없으면 호출하지 않음 (/new 경로)
-    /* ---------------- queryFn ---------------- */
     queryFn: async () => {
       if (!machineId) return null; // 안전장치
 
@@ -34,20 +22,14 @@ export const useEquipment = (machineId?: string) => {
         // 200 OK → EquipmentDTO 리턴
         return await fetchEquipment(machineId);
       } catch (err) {
-        /* 404 Not Found → 기존 레코드가 없다는 의미이므로
-           오류로 처리하지 않고 null 반환하여 '빈 폼' 으로 전환     */
         if (axios.isAxiosError(err) && err.response?.status === 404) {
           return null;
         }
-        // 그 외(500 등)는 진짜 오류 → 상위 컴포넌트에서 error 처리
         throw err;
       }
     },
   });
 
-  /* -------------------------------------------------------------- */
-  /* 2) 저장 (UPSERT)                                                */
-  /* -------------------------------------------------------------- */
   const mutation = useMutation({
     /* saveEquipment(payload) 는 POST /api/equipment
        → 백엔드에서 존재하면 UPDATE, 없으면 INSERT                  */
