@@ -9,6 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers.auth           import router as auth_router
 from .routers.equip_progress import router as equip_progress_router
 from .routers.equipment import router as equipment
+from .routers.option import router as option_router
+from .routers.OptionDetail import router as detail_router
+from .routers.optionupdate import router as updateoption
+
 # (추가 라우터가 있으면 아래처럼 계속 import)
 # from .routers.user import router as user_router
 
@@ -47,6 +51,9 @@ def root():
 app.include_router(auth_router)
 app.include_router(equipment , prefix="/api")
 app.include_router(equip_progress_router)
+app.include_router(option_router, prefix="/api")
+app.include_router(detail_router, prefix="/api")
+app.include_router(updateoption, prefix="/api")
 # app.include_router(user_router)
 
 # ───────────────────────────────────────────────

@@ -7,6 +7,7 @@ import LoginForm     from './features/Auth/LoginForm';
 import Dashboard     from './Dashboard/Dashboard';
 import ChecklistPage from './Equipment/ChecklistPage';
 import InfoPage      from './Equipment/FormFields';
+import OptionDetailPage from './Equipment/OptionDetailPage'
 
 function App() {
   return (
@@ -15,8 +16,9 @@ function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/equipment/:id/checklist" element={<ChecklistPage />} />
       <Route path="/equipment/:id/edit"      element={<InfoPage />} />
-    </Routes>
-  );
+      <Route path="/equipment/:id/option/:optionName" element={<OptionDetailPage />} />
+          </Routes>
+        );
 }
 
 export default App;
