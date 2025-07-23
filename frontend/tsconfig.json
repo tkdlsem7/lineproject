@@ -1,6 +1,11 @@
 {
   "compilerOptions": {
-    "target": "es5",
+    // ES2015 이상 문법 지원
+    "target": "es2015",
+
+    // Iterable downlevel 변환 활성화 (ES5 타깃일 때도 for…of 지원)
+    "downlevelIteration": true,
+
     "lib": [
       "dom",
       "dom.iterable",

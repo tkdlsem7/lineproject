@@ -80,6 +80,20 @@ export default function MachineButton({ slotCode, machineId, progress, shippingD
                 </button>
               )}
             </Menu.Item>
+
+                        <Menu.Item>
+              {({ active }) => (
+                <button
+                  onClick={go('checklist')}
+                  className={`w-full px-3 py-2 text-left rounded ${
+                    active ? 'bg-gray-100' : ''
+                  }`}
+                >
+                  출하
+                </button>
+              )}
+            </Menu.Item>
+
           </Menu>
         </Popover.Panel>
       </Transition>

@@ -1,7 +1,7 @@
 // src/pages/OptionDetailPage.tsx
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useOptionChecklist, ChecklistItem as ChecklistItemDTO } from '../hooks/OptionDetail';
+import { useOptionChecklist} from '../hooks/OptionDetail';
 
 /**
  * 옵션 상세 페이지 컴포넌트
