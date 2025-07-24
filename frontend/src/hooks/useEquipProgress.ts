@@ -1,12 +1,15 @@
 // 📁 src/features/hooks/useEquipProgress.ts
 import { useQuery } from "@tanstack/react-query";
 
+
 export interface EquipProgress {
   slot_code: string;
   machine_id: string;
+  manager : string,
   progress: number;
   shipping_date: string;
 }
+
 
 export function useEquipProgress() {
   return useQuery<EquipProgress[]>({
@@ -21,3 +24,4 @@ export function useEquipProgress() {
     staleTime: 5 * 60 * 1000, // 5분
   });
 }
+

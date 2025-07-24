@@ -6,6 +6,7 @@ from datetime import date
 class EquipProgressBase(BaseModel):
     slot_code: str        # 슬롯 위치 (예: B6)
     machine_id: str       # 장비 ID (예: J-07-02)
+    manager : str
     progress: float         # 진척도 (예: 75)
     shipping_date: date   # 출하일 (예: 2025-08-15)
 

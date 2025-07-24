@@ -11,6 +11,8 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';          // 📦 날짜 변환 유틸
 import { useEquipment } from '../hooks/fieldinput';
 import type { EquipmentDTO } from './equipment';
+import { useInputEquipment } from '../hooks/equipment_loginput';
+
 
 /* ✨ 폼 전용 타입 */
 type EquipmentForm = Omit<EquipmentDTO, 'shippingDate'> & {
@@ -23,7 +25,8 @@ export default function FormFields() {
   const machineIdParam = id ?? '';
   const { state } = useLocation() as { state?: { slotCode?: string } };
   const isUpdateMode = machineIdParam.includes('-');
-
+  const shipMutation = useInputEquipment();
+ 
   const { data, isPending, error, save, saving } = useEquipment(machineIdParam);
 
   const [form, setForm] = useState<EquipmentForm>({
@@ -37,6 +40,7 @@ export default function FormFields() {
   });
 
   useEffect(() => {
+
     if (data) {
       setForm({
         ...data,
@@ -47,6 +51,7 @@ export default function FormFields() {
 
   const handleChange =
     (key: keyof EquipmentForm) =>
+      
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const raw = e.target.value;
       const value =
@@ -70,8 +75,13 @@ export default function FormFields() {
       ...form,
       slotCode,
       shippingDate: format(form.shippingDate, 'yyyy-MM-dd'),
-      machineId: machineIdParam || form.machineId,
+      machineId: form.machineId,
     };
+
+    alert(form.machineId);
+    shipMutation.mutate({ machineNo: form.machineId , manager: form.manager}); 
+    
+    
 
     console.log('[SAVE PAYLOAD]', payload);
 

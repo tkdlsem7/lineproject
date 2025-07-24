@@ -3,10 +3,12 @@ import React, { useEffect, useRef } from 'react';
 import MachineButton from './MachineButton';
 
 /* ── 데이터 타입 ─────────────────────────────────────────── */
+/** ① 장비 정보: manager(담당자) 필드 추가 */
 export type EquipInfo = {
-  machineId: string;
-  progress: number;
-  shippingDate: string;
+  machineId: string;          // ex) "J-07-02"
+  progress:  number;          // ex) 75
+  manager?:  string | null;   // ex) "홍길동"  ← ★ 추가 (NULL 허용)
+  shippingDate: string;       // ex) "2025-07-30"
 };
 
 interface LineSection {
@@ -14,6 +16,7 @@ interface LineSection {
   machines: string[];
 }
 
+/* 라인별 슬롯 코드 */
 const lineSections: LineSection[] = [
   { title: 'A라인', machines: ['A5','A4','A3','A2','A1','A10','A9','A8','A7','A6'] },
   { title: 'B라인', machines: ['B5','B4','B3','B2','B1','B10','B9','B8','B7','B6'] },
@@ -71,6 +74,7 @@ export default function ABuildingView({ equipMap, highlightedSlot }: ABuildingVi
               slotCode={slotCode}
               machineId={info?.machineId}
               progress={info?.progress}
+              manager={info?.manager}          
               shippingDate={info?.shippingDate}
               bgClass={bgClass}
             />

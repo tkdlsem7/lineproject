@@ -7,6 +7,7 @@ class EquipProgress(Base):
 
     no           = Column(Integer, primary_key=True, index=True)         # 고유 번호
     slot_code    = Column(String, unique=True, index=True)               # 슬롯 위치 코드 (예: B6)
+    manager    = Column(String, nullable=False)
     machine_id   = Column(String, nullable=False)                        # 장비 ID (예: J-07-02)
     progress     = Column(Integer, nullable=False)                       # 진척도 (%)
     shipping_date = Column(Date, nullable=False)                         # 출하 예정일 (YYYY-MM-DD)
