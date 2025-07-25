@@ -1,12 +1,12 @@
-# 📁 backend/crud/equipment.py
 from __future__ import annotations
-
 from typing import List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
-from backend.models.equipment import Equipment
-from backend.schemas.equipment import EquipmentIn
+from sqlalchemy.orm import Session
+from sqlalchemy.exc  import SQLAlchemyError, IntegrityError
+from sqlalchemy      import func
+
+from backend.models.equipment   import Equipment
+from backend.schemas.equipment  import EquipmentIn
 
 # ───────────────────────────────────────────────
 # READ
@@ -14,17 +14,27 @@ from backend.schemas.equipment import EquipmentIn
 def get_equipment_by_machine(
     db: Session,
     machine_id: str,
+    site: str | None = None,          # ★ site 파라미터
 ) -> Optional[Equipment]:
-    """machine_id 로 1행 조회"""
-    return (
-        db.query(Equipment)
-        .filter(Equipment.machine_id == machine_id)
-        .first()
-    )
+    """
+    machine_id 로 1행 조회
+    • site 가 주어지면 동일 site 행만 찾는다.
+      (대소문자 무시가 필요하면 func.lower 적용)
+    """
+    query = db.query(Equipment).filter(Equipment.machine_id == machine_id)
+    if site:
+        query = query.filter(Equipment.site == site)
+        # 대소문자 무시는 ↓ 이런 식으로
+        # query = query.filter(func.lower(Equipment.site) == site.lower())
 
-def get_all_equipment(db: Session) -> List[Equipment]:
-    # 모델 PK 컬럼은 `no`
-    return db.query(Equipment).order_by(Equipment.no.asc()).all()   # ← 수정
+    return query.first()
+
+
+def get_all_equipment(db: Session, site: str | None = None) -> List[Equipment]:
+    query = db.query(Equipment)
+    if site:
+        query = query.filter(Equipment.site == site)
+    return query.order_by(Equipment.no.asc()).all()
 
 
 # ───────────────────────────────────────────────
@@ -32,37 +42,36 @@ def get_all_equipment(db: Session) -> List[Equipment]:
 # ───────────────────────────────────────────────
 def upsert_equipment(db: Session, data: EquipmentIn) -> Equipment:
     """
-    machine_id 기준 UPSERT
-    • 존재 시  → UPDATE
-    • 미존재 시 → INSERT
+    machine_id + site 기준 UPSERT
+    • 존재 → UPDATE
+    • 미존재 → INSERT
     """
-    equip = get_equipment_by_machine(db, data.machine_id)          # ← 수정 (snake_case)
+    equip = get_equipment_by_machine(db, data.machine_id, data.site)
 
     try:
-        if equip is None:                                          # INSERT
+        if equip is None:  # INSERT
             equip = Equipment(
-                machine_id = data.machine_id,                      # ← 수정
-                slot_code  = data.slot_code,                       # ← 추가
+                machine_id = data.machine_id,
+                slot_code  = data.slot_code,
+                site       = data.site,         # ★ INSERT 시 site 고정
             )
             db.add(equip)
 
-        # 공통 업데이트 필드
-        equip.progress      = data.progress
-        equip.shipping_date = data.shipping_date                   # ← 수정
-        equip.customer      = data.customer
-        equip.manager       = data.manager
-        equip.note          = data.note
-        equip.slot_code     = data.slot_code                       # ← 추가 (UPDATE 시에도 유지)
-
-        print("[UPSERT PAYLOAD]", data.model_dump())
+        # 공통 필드 업데이트 (INSERT / UPDATE 공통)
+        equip.progress       = data.progress
+        equip.shipping_date  = data.shipping_date
+        equip.customer       = data.customer
+        equip.manager        = data.manager
+        equip.note           = data.note
+        equip.slot_code      = data.slot_code
+        equip.site           = data.site        # ★ UPDATE 시에도 site 반영
 
         db.commit()
         db.refresh(equip)
         return equip
 
-    except IntegrityError as ie:
+    except IntegrityError:
         db.rollback()
-        # machine_id, slot_code 중복 등 제약 위반 메시지를 클라이언트에 전달하고 싶다면
         raise
     except SQLAlchemyError:
         db.rollback()
@@ -70,10 +79,10 @@ def upsert_equipment(db: Session, data: EquipmentIn) -> Equipment:
 
 
 # ───────────────────────────────────────────────
-# DELETE (선택)
+# DELETE (옵션)
 # ───────────────────────────────────────────────
-def delete_equipment(db: Session, machine_id: str) -> None:
-    equip = get_equipment_by_machine(db, machine_id)
+def delete_equipment(db: Session, machine_id: str, site: str | None = None) -> None:
+    equip = get_equipment_by_machine(db, machine_id, site)
     if equip:
         db.delete(equip)
         db.commit()

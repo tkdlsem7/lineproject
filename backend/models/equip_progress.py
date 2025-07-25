@@ -11,5 +11,5 @@ class EquipProgress(Base):
     machine_id   = Column(String, nullable=False)                        # 장비 ID (예: J-07-02)
     progress     = Column(Integer, nullable=False)                       # 진척도 (%)
     shipping_date = Column(Date, nullable=False)                         # 출하 예정일 (YYYY-MM-DD)
-
+    site = Column(String, nullable=False)
     # (선택) created_at, updated_at 등을 넣고 싶다면 여기 추가 가능

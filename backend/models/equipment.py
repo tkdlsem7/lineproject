@@ -24,4 +24,4 @@ class Equipment(Base):
     shipping_date = Column(Date,   nullable=False)
     customer      = Column(String, nullable=False)
     note          = Column(String, nullable=True)                         # ← 수정: nullable=True (현재 DB 빈값 허용)
-
+    site          = Column(String, nullable=True)

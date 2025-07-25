@@ -2,13 +2,13 @@
 import React, { useEffect, useRef } from 'react';
 import MachineButton from './MachineButton';
 
-/* ── 데이터 타입 ─────────────────────────────────────────── */
-/** ① 장비 정보: manager(담당자) 필드 추가 */
+/* ────────────────────────────────────────────────────────── */
+/* ① 데이터 타입 정의                                          */
 export type EquipInfo = {
-  machineId: string;          // ex) "J-07-02"
-  progress:  number;          // ex) 75
-  manager?:  string | null;   // ex) "홍길동"  ← ★ 추가 (NULL 허용)
-  shippingDate: string;       // ex) "2025-07-30"
+  machineId:    string;        // ex) "J-07-02"
+  progress:     number;        // ex) 75
+  manager?:     string | null; // ex) "홍길동"
+  shippingDate: string;        // ex) "2025-07-30"
 };
 
 interface LineSection {
@@ -16,7 +16,7 @@ interface LineSection {
   machines: string[];
 }
 
-/* 라인별 슬롯 코드 */
+/* ② 라인별 슬롯 목록                                          */
 const lineSections: LineSection[] = [
   { title: 'A라인', machines: ['A5','A4','A3','A2','A1','A10','A9','A8','A7','A6'] },
   { title: 'B라인', machines: ['B5','B4','B3','B2','B1','B10','B9','B8','B7','B6'] },
@@ -26,17 +26,25 @@ const lineSections: LineSection[] = [
   { title: 'F라인', machines: ['F5','F4','F3','F2','F1','F10','F9','F8','F7','F6'] },
 ];
 
+/* ────────────────────────────────────────────────────────── */
+/* ③ 컴포넌트 Props                                           */
 interface ABuildingViewProps {
-  equipMap: Map<string, EquipInfo>;
-  highlightedSlot: string | null;
+  equipMap:        Map<string, EquipInfo>; // slot_code → 정보
+  highlightedSlot: string | null;          // 검색 결과 하이라이트
+  site:            string;                 // ★ NEW: 본사/부항리/진우리
 }
 
-/* ── ABuildingView ──────────────────────────────────────── */
-export default function ABuildingView({ equipMap, highlightedSlot }: ABuildingViewProps) {
-  /* 버튼 DOM 저장: slotCode → HTMLButtonElement */
+/* ────────────────────────────────────────────────────────── */
+/* ④ ABuildingView                                            */
+export default function ABuildingView({
+  equipMap,
+  highlightedSlot,
+  site,                     /* ★ NEW */
+}: ABuildingViewProps) {
+  /* 버튼 DOM 참조 저장: slotCode → HTMLButtonElement */
   const buttonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
-  /* 하이라이트 슬롯 변경 → 스크롤 + 링 강조 */
+  /* 하이라이트 슬롯 변경 시 → 스크롤 + 링 강조 */
   useEffect(() => {
     if (highlightedSlot) {
       const btn = buttonRefs.current.get(highlightedSlot);
@@ -48,17 +56,17 @@ export default function ABuildingView({ equipMap, highlightedSlot }: ABuildingVi
     }
   }, [highlightedSlot]);
 
-  /* 라인 섹션 렌더러 */
+  /* 라인 섹션 렌더러 -------------------------------------------------------- */
   const renderLine = ({ title, machines }: LineSection) => (
     <section key={title} className="mb-20">
       <h3 className="text-2xl font-bold text-center mb-6">{title}</h3>
 
       <div className="grid grid-cols-5 gap-x-12 gap-y-12">
-        {machines.map((slotCode) => {
+        {machines.map(slotCode => {
           const info = equipMap.get(slotCode);
           const prog = info?.progress;
 
-          /* 진척도 색상 계산 */
+          /* 진척도별 배경색 계산 */
           let bgClass = 'bg-gray-100 hover:bg-gray-200';
           if (prog !== undefined) {
             if (prog < 30)       bgClass = 'bg-blue-600 hover:bg-blue-700 text-white';
@@ -70,13 +78,14 @@ export default function ABuildingView({ equipMap, highlightedSlot }: ABuildingVi
           return (
             <MachineButton
               key={slotCode}
-              ref={(el) => { if (el) buttonRefs.current.set(slotCode, el); }}
+              ref={el => { if (el) buttonRefs.current.set(slotCode, el); }}
               slotCode={slotCode}
               machineId={info?.machineId}
               progress={info?.progress}
-              manager={info?.manager}          
+              manager={info?.manager}
               shippingDate={info?.shippingDate}
               bgClass={bgClass}
+              site={site}               /* ★ NEW: 상위 섹션 넘김 */
             />
           );
         })}
@@ -84,7 +93,7 @@ export default function ABuildingView({ equipMap, highlightedSlot }: ABuildingVi
     </section>
   );
 
-  /* 레이아웃: 좌 (B·D·F) / 구분선 / 우 (A·C·E) */
+  /* 레이아웃: 좌(B·D·F) | 구분선 | 우(A·C·E) ----------------------------- */
   return (
     <div className="flex gap-10 overflow-auto">
       <div className="flex-1">

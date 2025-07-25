@@ -20,6 +20,7 @@ class _EquipmentBase(BaseModel):
     manager: str | None = None
     slot_code: str | None = Field(default=None, alias="slotCode")
     note: str | None = None
+    site : str | None = None
 
     # Pydantic v2 설정
     model_config = ConfigDict(

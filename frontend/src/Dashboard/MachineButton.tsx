@@ -4,58 +4,57 @@
 import { Popover, Menu, Transition } from '@headlessui/react';
 import React, { Fragment, forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {useDeleteEquipmentLog} from '../hooks/equipmentdel'
-/* 🚚 출하 처리 Mutation 훅 */
-import { useShipEquipment } from '../hooks/shipdate';
+import { useDeleteEquipmentLog } from '../hooks/equipmentdel';   // 삭제 Mutation
+import { useShipEquipment }    from '../hooks/shipdate';         // 출하 Mutation
 
 /* ────────────────────────────────────────────────────────── */
-/* ① prop 타입: slotCode + machineId + progress + shippingDate + bgClass */
+/* ① prop 타입 확장: site 추가                                */
 export interface MachineButtonProps {
-  slotCode: string;              // ex) "B6"
-  machineId?: string | null;     // ex) "J-07-02"
-    manager?: string | null;  // ex) "2025-07-30"
-  progress?: number | null;      // ex) 75
-  shippingDate?: string | null;  // ex) "2025-07-30"
-  bgClass?: string;              // ABuildingView에서 주입
+  slotCode:     string;              // ex) "B6"
+  machineId?:   string | null;       // ex) "J-07-02"
+  manager?:     string | null;       // ex) "홍길동"
+  progress?:    number | null;       // ex) 75
+  shippingDate?: string | null;      // ex) "2025-07-30"
+  bgClass?:     string;              // ABuildingView에서 주입
+  site:         string;              // ★ NEW: '본사' | '부항리' | '진우리'
 }
 /* ────────────────────────────────────────────────────────── */
 
-/**
- * 📌 배치도용 버튼(MachineButton)
- *   • Popover 메뉴: 체크리스트 / 정보입력 / 출하
- *   • forwardRef: 부모가 스크롤·하이라이트 시 버튼 DOM 접근
- *   • bgClass: 진척도 색상·텍스트 컬러 주입
- */
 const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
   function MachineButton(
-    { slotCode, machineId, manager, progress, shippingDate,bgClass },
+    {
+      slotCode,
+      machineId,
+      manager,
+      progress,
+      shippingDate,
+      bgClass,
+      site,                         /* ★ NEW */
+    },
     ref
   ) {
+    /* ─── 훅 ─── */
     const nav = useNavigate();
-
-    /* 1) 출하 Mutation 훅 */
     const shipMutation = useShipEquipment();
-    const delMutation = useDeleteEquipmentLog();
-    /* 2) URL·Mutation 파라미터로 쓰일 고유 ID */
-    const shipTargetId = machineId ?? slotCode;   // machineId 우선, 없으면 slotCode
-    const dateText        = shippingDate ? `출하: ${shippingDate.slice(5)}` : '';
-    const managerText     = manager ? ` (${manager})` : '';             // ★ 괄호로 구분
-    const dateManagerLine = dateText || manager ? `${dateText}${managerText}` : '';
+    const delMutation  = useDeleteEquipmentLog();
 
-    /* 3) 페이지 이동 헬퍼 */
-    const go = (path: string) => () => nav(`/equipment/${shipTargetId}/${path}`);
+    /* ─── 공통 파생 값 ─── */
+    const shipTargetId   = machineId ?? slotCode;
+    const dateText       = shippingDate ? `출하: ${shippingDate.slice(5)}` : '';
+    const managerText    = manager ? ` (${manager})` : '';
+    const dateManager    = dateText || manager ? `${dateText}${managerText}` : '';
+    const baseStyle      = bgClass ?? 'bg-indigo-600 hover:bg-indigo-700 text-white';
 
-    /* 4) 출하일(YYYY-MM-DD) → MM-DD 로 표시 */
+    /* ② 페이지 이동: site 를 쿼리스트링으로 붙여 전파 --------------- */
+    const go = (path: string) => () =>
+      nav(
+        `/equipment/${shipTargetId}/${path}?site=${encodeURIComponent(site)}`
+      );
 
-    /* 5) 기본 색상(fallback) ↔ 부모가 준 bgClass 우선 */
-    const baseStyle =
-      bgClass ?? 'bg-indigo-600 hover:bg-indigo-700 text-white';
-
-    /* ─────────────────────────────────────────────────────── */
-
+    /* ──────────────────────────────────────────────────────────── */
     return (
       <Popover className="relative">
-        {/* ▼ 실제 버튼(기본 정보 표시) */}
+        {/* ▼ 버튼 본체 */}
         <Popover.Button
           ref={ref}
           aria-label={slotCode}
@@ -67,13 +66,11 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
           <span className="text-sm font-semibold">
             {machineId ?? ''}
           </span>
-          <span>
-            {progress != null ? `진척도: ${progress}%` : ''}
-          </span>
-          <span>{dateManagerLine}</span>
+          <span>{progress != null ? `진척도: ${progress}%` : ''}</span>
+          <span>{dateManager}</span>
         </Popover.Button>
 
-        {/* ▼ 팝업 메뉴 (체크리스트 · 정보입력 · 출하) */}
+        {/* ▼ 팝업 메뉴 */}
         <Transition
           as={Fragment}
           enter="transition ease-out duration-100"
@@ -91,7 +88,7 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
               {/* 1) 체크리스트 */}
               <Menu.Item>
                 {({ active }) => {
-                  const disabled = !machineId;                 // ★ 장비 미입고 여부
+                  const disabled = !machineId;
                   return (
                     <button
                       onClick={
@@ -114,7 +111,7 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
                 }}
               </Menu.Item>
 
-              {/* 2) 장비 정보 입력 → 입고/수정 모두 가능하니 그대로 둡니다 */}
+              {/* 2) 장비 정보 입력 */}
               <Menu.Item>
                 {({ active }) => (
                   <button
@@ -131,7 +128,7 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
               {/* 3) 출하 처리 */}
               <Menu.Item>
                 {({ active }) => {
-                  const disabled = !machineId;                 // ★ 장비 미입고 여부
+                  const disabled = !machineId;
                   return (
                     <button
                       onClick={
@@ -139,11 +136,13 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
                           ? () => alert('먼저 장비를 입고시켜주세요.')
                           : () => {
                               if (window.confirm('정말로 출하 하겠습니까?')) {
+                                /* 출하 → 성공 후 새로고침 */
                                 shipMutation.mutate(shipTargetId, {
                                   onSuccess: () => window.location.reload(),
                                 });
+                                /* 로그 정리 */
                                 delMutation.mutate({ machineNo: shipTargetId });
-                                alert("출하가 완료되었습니다.");
+                                alert('출하가 완료되었습니다.');
                               }
                             }
                       }

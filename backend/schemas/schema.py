@@ -9,6 +9,7 @@ class EquipProgressBase(BaseModel):
     manager : str
     progress: float         # 진척도 (예: 75)
     shipping_date: date   # 출하일 (예: 2025-08-15)
+    site : str
 
     class Config:
         from_attributes = True  # ✅ Pydantic v2 호환 (이전 orm_mode = True)

@@ -1,15 +1,15 @@
-// 📁 src/features/Dashboard/Dashboard.tsx
 import React, { useState, useMemo, useEffect } from 'react';
 import ABuildingView from './ABuildingView';                   // A동 배치도
-import { useEquipProgress } from '../hooks/useEquipProgress';  // 장비 진척도 Fetch 훅
+import { useEquipProgress } from '../hooks/useEquipProgress';  // ★ UPDATE: 파라미터 추가
 
 /* ──────────────────────────────────────────────────────────── */
 /* Dashboard 컴포넌트                                          */
 /* ──────────────────────────────────────────────────────────── */
 export default function Dashboard() {
   /* ─── 상태 ─── */
-  const [selectedLine, setSelectedLine] = useState<string>('A동');          // ★ 기본을 'A동'으로
-  const [searchQuery,  setSearchQuery]  = useState<string>('');             // 검색창 입력
+  const [selectedLine, setSelectedLine] = useState<string>('A동');
+  const [selectedRoot, setSelectedRoot] = useState<string>('본사');   // 상위 섹션
+  const [searchQuery,  setSearchQuery]  = useState<string>('');
   const [highlightedSlot, setHighlightedSlot] = useState<string | null>(null);
   const [expandedNodes,   setExpandedNodes]   = useState<Set<string>>(new Set());
 
@@ -26,37 +26,28 @@ export default function Dashboard() {
     isLoading,
     isError,
     refetch,
-  } = useEquipProgress();
+  } = useEquipProgress(selectedRoot);              // ★ UPDATE: site 전달
 
-  /* 5분마다 자동 새로고침 */
+  /* 5분마다 자동 새로고침 ---------------------------------------------------- */
   useEffect(() => {
     const t = setInterval(() => refetch(), 5 * 60 * 1000);
     return () => clearInterval(t);
   }, [refetch]);
 
-  /* ─── Map 변환: slot_code → { machineId, progress, shippingDate, manager } ─── */
+  /* ─── Map 변환 ─── */
   const equipMap = useMemo(() => {
     const map = new Map<
       string,
       { machineId: string; progress: number; shippingDate: string; manager?: string | null }
     >();
-
-    progressList.forEach(
-      ({
-        slot_code,
-        machine_id,
+    progressList.forEach(({ slot_code, machine_id, progress, shipping_date, manager }) => {
+      map.set(slot_code, {
+        machineId:    machine_id,
         progress,
-        shipping_date,
-        manager,              // ★ manager 필드 구조분해
-      }) => {
-        map.set(slot_code, {
-          machineId:    machine_id,
-          progress,
-          shippingDate: shipping_date,
-          manager,      // ★ 저장
-        });
-      }
-    );
+        shippingDate: shipping_date,
+        manager,
+      });
+    });
     return map;
   }, [progressList]);
 
@@ -64,9 +55,17 @@ export default function Dashboard() {
   const handleSelect = (name: string) => {
     setSelectedLine(name);
     setHighlightedSlot(null);
+
+    /* 최상위(root) 노드 찾기 */
+    const root = lineTree.find(
+      node => node.name === name || node.children.includes(name)
+    );
+    if (!root) return;
+
+    setSelectedRoot(root.name);         // ★ UPDATE: 저장 → 훅 파라미터로 사용
   };
 
-  /* ─── 노드 토글 ─── */
+  /* ─── 상위 노드 토글 ─── */
   const toggleExpand = (name: string) =>
     setExpandedNodes(prev => {
       const next = new Set(prev);
@@ -77,14 +76,13 @@ export default function Dashboard() {
   /* ─── 수동 새로고침 ─── */
   const handleManualRefresh = async () => {
     try {
-      await refetch();
-      alert('🔄 새로고침이 완료되었습니다!');
+      await refetch();   // 백엔드 재호출
     } catch {
       alert('⚠️ 새로고침 중 오류가 발생했습니다.');
     }
   };
 
-  /* ─── 검색 (대소문자 무시) ─── */
+  /* ─── 검색 ─── */
   const handleSearch = () => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return alert('🔍 검색어를 입력하세요.');
@@ -104,15 +102,12 @@ export default function Dashboard() {
     }
   };
 
-  /* ───────────────── 렌더링 ───────────────── */
+  /* ─────────── 렌더링 ─────────── */
   return (
     <div className="flex flex-col h-screen">
-      {/* ── 헤더 ── */}
+      {/* 헤더 */}
       <header className="flex items-center p-4 bg-white shadow">
-        <div
-          className="text-4xl font-semibold text-orange-600"
-          style={{ fontFamily: 'Semics, sans-serif' }}
-        >
+        <div className="text-4xl font-semibold text-orange-600" style={{ fontFamily: 'Semics, sans-serif' }}>
           SEMICS
         </div>
 
@@ -142,9 +137,9 @@ export default function Dashboard() {
         </button>
       </header>
 
-      {/* ── 본문 ── */}
+      {/* 본문 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 사이드바 (트리) */}
+        {/* 사이드바 */}
         <aside className="w-64 bg-gray-800 text-gray-100 p-4 shrink-0">
           <h2 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-2">
             📋 라인 선택
@@ -155,23 +150,24 @@ export default function Dashboard() {
                 {/* 상위 노드 */}
                 <div
                   className="flex items-center px-2 py-1 cursor-pointer hover:bg-gray-700"
-                  onClick={() => toggleExpand(node.name)}
+                  onClick={() => {
+                    toggleExpand(node.name);
+                    handleSelect(node.name);
+                  }}
                 >
                   <span className="mr-1 select-none">
                     {expandedNodes.has(node.name) ? '▾' : '▸'}
                   </span>
                   <span
                     className={
-                      selectedLine === node.name
-                        ? 'font-bold text-white'
-                        : 'text-gray-200'
+                      selectedLine === node.name ? 'font-bold text-white' : 'text-gray-200'
                     }
-                    onClick={() => handleSelect(node.name)}
                   >
                     {node.name}
                   </span>
                 </div>
-                {/* 자식 라인 */}
+
+                {/* 하위 라인 */}
                 {expandedNodes.has(node.name) && (
                   <ul className="pl-6 mt-1">
                     {node.children.map(child => (
@@ -196,11 +192,9 @@ export default function Dashboard() {
         {/* 세로 분리선 */}
         <div className="w-px bg-gray-400" />
 
-        {/* 메인 뷰 */}
+        {/* 메인 */}
         <main className="flex-1 p-6 overflow-auto">
-          {isLoading && (
-            <p className="text-center text-gray-500 mt-20">데이터 불러오는 중…</p>
-          )}
+          {isLoading && <p className="text-center text-gray-500 mt-20">데이터 불러오는 중…</p>}
           {isError && (
             <p className="text-center text-red-500 mt-20">
               ⚠️ 장비 정보를 불러오지 못했습니다.
@@ -208,14 +202,11 @@ export default function Dashboard() {
           )}
           {!isLoading && !isError && (
             selectedLine === 'A동' ? (
-              <ABuildingView
-                equipMap={equipMap}
-                highlightedSlot={highlightedSlot}
-              />
+              <ABuildingView equipMap={equipMap} highlightedSlot={highlightedSlot} site={selectedRoot} />
             ) : (
               <p className="text-center text-gray-500 mt-20">
-                <span className="font-semibold">{selectedLine}</span> 배치도가 아직
-                준비되지 않았습니다.
+                <span className="font-semibold">{selectedLine}</span> 배치도가 아직 준비되지
+                않았습니다.
               </p>
             )
           )}

@@ -1,34 +1,54 @@
-// 📁 src/Equipment/FormFields.tsx
 // -----------------------------------------------------------------------------
-// 해당 컴포넌트는 장비 정보를 등록/수정하는 폼입니다.
-// 🔑 변경 사항
-//   1. machineId에 '-'가 포함되어 있으면 수정 모드로 판단하여 입력 불가(read-only)
-//   2. Progress(진척도) 슬라이더는 항상 읽기 전용(disabled)
+// 장비 정보 등록/수정 폼
+//   1) machineId에 '-' 포함 → 수정 모드, 입력 불가(read-only)
+//   2) Progress 슬라이더는 항상 비활성(disabled)
+//   3) URL 쿼리 ?site=본사 를 읽어 useEquipment·payload에 전달
 // -----------------------------------------------------------------------------
 
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { format, parseISO } from 'date-fns';          // 📦 날짜 변환 유틸
-import { useEquipment } from '../hooks/fieldinput';
+import {
+  useNavigate,
+  useParams,
+  useLocation,
+} from 'react-router-dom';
+import { format, parseISO } from 'date-fns';
+
+import { useEquipment } from '../hooks/fieldinput';           // ✅ 경로 수정
 import type { EquipmentDTO } from './equipment';
 import { useInputEquipment } from '../hooks/equipment_loginput';
 
-
-/* ✨ 폼 전용 타입 */
-type EquipmentForm = Omit<EquipmentDTO, 'shippingDate'> & {
+/* ────────────────────────────────────────────────────────── */
+/* ① 폼 내부 전용 타입                                         */
+/*    - shippingDate: Date 객체
+/*    - site          은 스테이트에 두지 않고, URL 쿼리에서 직접 가져옴
+/* ────────────────────────────────────────────────────────── */
+type EquipmentForm = Omit<EquipmentDTO, 'shippingDate' | 'site'> & {
   shippingDate: Date | null;
 };
 
 export default function FormFields() {
+  /* ─── 라우터 파라미터 / 쿼리 ─── */
   const nav = useNavigate();
   const { id } = useParams<{ id?: string }>();
   const machineIdParam = id ?? '';
   const { state } = useLocation() as { state?: { slotCode?: string } };
-  const isUpdateMode = machineIdParam.includes('-');
-  const shipMutation = useInputEquipment();
- 
-  const { data, isPending, error, save, saving } = useEquipment(machineIdParam);
+  const { search } = useLocation();
+  const site = new URLSearchParams(search).get('site') ?? '본사';   // 🆕 기본값
 
+  /* ─── 모드 판단 ─── */
+  const isUpdateMode = machineIdParam.includes('-');
+
+  /* ─── API 훅 ─── */
+  const shipMutation  = useInputEquipment();              // equipment_log 입력
+  const {
+    data,
+    isPending,
+    error,
+    save,
+    saving,
+  } = useEquipment(machineIdParam, site);                 // 🆕 site 전달
+
+  /* ─── 로컬 폼 상태 ─── */
   const [form, setForm] = useState<EquipmentForm>({
     machineId: '',
     progress: 0,
@@ -39,28 +59,36 @@ export default function FormFields() {
     slotCode: state?.slotCode ?? '',
   });
 
+  /* 서버 데이터 수신 → 폼 채우기 */
   useEffect(() => {
-
     if (data) {
       setForm({
         ...data,
-        shippingDate: parseISO(data.shippingDate),
+        shippingDate: data.shippingDate
+          ? parseISO(data.shippingDate)
+          : null,
       });
     }
   }, [data]);
 
+  /* ─── 공통 onChange 핸들러 ─── */
   const handleChange =
     (key: keyof EquipmentForm) =>
-      
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const raw = e.target.value;
       const value =
-        key === 'progress' ? Number(raw) :
-        key === 'shippingDate' ? (raw ? parseISO(raw) : null) :
-        raw;
+        key === 'progress'
+          ? Number(raw)
+          : key === 'shippingDate'
+          ? raw
+            ? parseISO(raw)
+            : null
+          : raw;
+
       setForm(prev => ({ ...prev, [key]: value as any }));
     };
 
+  /* ─── 제출 ─── */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -68,22 +96,23 @@ export default function FormFields() {
     if (!form.shippingDate) return alert('출하일을 선택하세요.');
 
     const slotCode =
-      form.slotCode.trim() !== '' ? form.slotCode.trim() :
-      machineIdParam || form.machineId;
+      form.slotCode.trim() !== ''
+        ? form.slotCode.trim()
+        : machineIdParam || form.machineId;
 
     const payload: EquipmentDTO = {
       ...form,
       slotCode,
       shippingDate: format(form.shippingDate, 'yyyy-MM-dd'),
       machineId: form.machineId,
+      site,                         // 🆕 site 포함
     };
 
-    alert(form.machineId);
-    shipMutation.mutate({ machineNo: form.machineId , manager: form.manager}); 
-    
-    
-
-    console.log('[SAVE PAYLOAD]', payload);
+    /* 출하 로그 입력 */
+    shipMutation.mutate({
+      machineNo: form.machineId,
+      manager: form.manager,
+    });
 
     try {
       await save(payload);
@@ -95,11 +124,24 @@ export default function FormFields() {
     }
   };
 
-  if (isPending) return <p className="p-8 text-center text-gray-600">Loading equipment…</p>;
-  if (error) return <p className="p-8 text-center text-red-500">데이터를 불러오지 못했습니다.</p>;
+  /* ─── 로딩 / 에러 처리 ─── */
+  if (isPending)
+    return (
+      <p className="p-8 text-center text-gray-600">Loading equipment…</p>
+    );
+  if (error)
+    return (
+      <p className="p-8 text-center text-red-500">
+        데이터를 불러오지 못했습니다.
+      </p>
+    );
 
+  /* ─── 렌더링 ─── */
   return (
-    <form onSubmit={handleSubmit} className="max-w-3xl mx-auto mt-8 bg-white p-8 rounded-2xl shadow">
+    <form
+      onSubmit={handleSubmit}
+      className="max-w-3xl mx-auto mt-8 bg-white p-8 rounded-2xl shadow"
+    >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
         {/* Machine ID */}
         <div>
@@ -108,13 +150,13 @@ export default function FormFields() {
             value={form.machineId}
             onChange={handleChange('machineId')}
             required
-            disabled={isUpdateMode}    // 🔒 수정 모드일 경우 입력 불가
+            disabled={isUpdateMode}
             placeholder="예) J-07-02"
             className="input"
           />
         </div>
 
-        {/* 진척도 슬라이더 */}
+        {/* 진척도 */}
         <div>
           <label className="label">진척도 (%) *</label>
           <input
@@ -122,11 +164,13 @@ export default function FormFields() {
             min={0}
             max={100}
             value={form.progress}
-            disabled                     // 항상 비활성화
+            disabled
             onChange={handleChange('progress')}
             className="w-full accent-indigo-600"
           />
-          <p className="mt-2 text-sm text-right text-gray-600">{form.progress}%</p>
+          <p className="mt-2 text-sm text-right text-gray-600">
+            {form.progress}%
+          </p>
         </div>
 
         {/* 출하일 */}
@@ -134,7 +178,9 @@ export default function FormFields() {
           <label className="label">출하일 *</label>
           <input
             type="date"
-            value={form.shippingDate ? format(form.shippingDate, 'yyyy-MM-dd') : ''}
+            value={
+              form.shippingDate ? format(form.shippingDate, 'yyyy-MM-dd') : ''
+            }
             onChange={handleChange('shippingDate')}
             required
             className="input"
@@ -163,7 +209,7 @@ export default function FormFields() {
           />
         </div>
 
-        {/* 특이사항 메모 */}
+        {/* 비고 */}
         <div className="md:col-span-2">
           <label className="label">비고</label>
           <textarea
@@ -177,7 +223,13 @@ export default function FormFields() {
       </div>
 
       <div className="mt-10 flex justify-end gap-3">
-        <button type="button" onClick={() => nav(-1)} className="btn btn-outline">취소</button>
+        <button
+          type="button"
+          onClick={() => nav(-1)}
+          className="btn btn-outline"
+        >
+          취소
+        </button>
         <button type="submit" className="btn btn-primary" disabled={saving}>
           {saving ? '저장 중…' : '저장'}
         </button>

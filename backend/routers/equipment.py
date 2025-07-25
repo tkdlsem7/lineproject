@@ -1,50 +1,49 @@
 # ---------------------------------------------------------------
-# 장비 API 라우터
-#   • POST /api/equipment            : 신규 생성 or 업데이트(UPSERT)
-#   • GET  /api/equipment/{machine_id} : machine_id 기준 단일 장비 조회
+# 장비 API 라우터 (/api/equipment)
+#   • POST /api/equipment               : UPSERT
+#   • GET  /api/equipment/{machine_id}  : 단일 장비 조회 (site 필터 지원)
 # ---------------------------------------------------------------
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from backend.db.database import get_db                     # DB 세션 의존성
-from backend.schemas.equipment import EquipmentIn, EquipmentOut
-from backend.crud.equipment import (
+from backend.db.database         import get_db
+from backend.schemas.equipment   import EquipmentIn, EquipmentOut
+from backend.crud.equipment      import (
     upsert_equipment,
-    get_equipment_by_machine,          # ← 변경: 새 CRUD 함수명
+    get_equipment_by_machine,
 )
 
-# ────────────────────────────────────────────────────────────────
 router = APIRouter(prefix="/equipment", tags=["equipment"])
-# ────────────────────────────────────────────────────────────────
 
-
-# ▶ POST /api/equipment  (신규/수정 공용)
+# ──────────────────────────────────────────────────────────────
+# POST: 신규 / 수정 (UPSERT)
+# ──────────────────────────────────────────────────────────────
 @router.post("/", response_model=EquipmentOut)
 def create_or_update_equipment(
     payload: EquipmentIn,
     db: Session = Depends(get_db),
 ):
     """
-    Pydantic 스키마(EquipmentIn)로 검증된 데이터를 받아
-    존재하면 UPDATE, 없으면 INSERT 후 결과(EquipmentOut) 반환
+    • payload.site 까지 포함해 INSERT / UPDATE
     """
     return upsert_equipment(db, payload)
 
 
-# ▶ GET /api/equipment/{machine_id}  (폼 최초 진입 시 값 미리 채우기)
+# ──────────────────────────────────────────────────────────────
+# GET: machine_id + (선택) site 로 단일 조회
+# ──────────────────────────────────────────────────────────────
 @router.get("/{machine_id}", response_model=EquipmentOut)
 def read_equipment(
     machine_id: str,
+    site: str | None = Query(
+        default=None,
+        description="본사 / 부항리 / 진우리 중 하나 (생략 시 모든 site 중 검색)",
+        examples={"본사": {"summary": "본사 장비 조회", "value": "본사"}},
+    ),
     db: Session = Depends(get_db),
 ):
-    """
-    machine_id 로 장비 1건 조회
-    없으면 404 반환
-    """
-    equip = get_equipment_by_machine(db, machine_id)  # ← 변경: 올바른 함수 호출
+    equip = get_equipment_by_machine(db, machine_id, site)
     if equip is None:
         raise HTTPException(status_code=404, detail="장비를 찾을 수 없습니다.")
     return equip
-
-# (추후 필요 시 read_all_equipment, delete_equipment 등 추가)
