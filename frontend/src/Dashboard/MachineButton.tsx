@@ -16,7 +16,7 @@ export interface MachineButtonProps {
   progress?:    number | null;       // ex) 75
   shippingDate?: string | null;      // ex) "2025-07-30"
   bgClass?:     string;              // ABuildingView에서 주입
-  site:         string;              // ★ NEW: '본사' | '부항리' | '진우리'
+  site:         string;              // '본사' | '부항리' | '진우리'
 }
 /* ────────────────────────────────────────────────────────── */
 
@@ -29,7 +29,7 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
       progress,
       shippingDate,
       bgClass,
-      site,                         /* ★ NEW */
+      site,
     },
     ref
   ) {
@@ -39,17 +39,15 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
     const delMutation  = useDeleteEquipmentLog();
 
     /* ─── 공통 파생 값 ─── */
-    const shipTargetId   = machineId ?? slotCode;
+    const shipTargetId   = machineId ?? slotCode; // 장비 ID(없으면 슬롯)
     const dateText       = shippingDate ? `출하: ${shippingDate.slice(5)}` : '';
     const managerText    = manager ? ` (${manager})` : '';
     const dateManager    = dateText || manager ? `${dateText}${managerText}` : '';
     const baseStyle      = bgClass ?? 'bg-indigo-600 hover:bg-indigo-700 text-white';
 
-    /* ② 페이지 이동: site 를 쿼리스트링으로 붙여 전파 --------------- */
+    /* ② 공통 페이지 이동 함수 ------------------------------------ */
     const go = (path: string) => () =>
-      nav(
-        `/equipment/${shipTargetId}/${path}?site=${encodeURIComponent(site)}`
-      );
+      nav(`/equipment/${shipTargetId}/${path}?site=${encodeURIComponent(site)}`);
 
     /* ──────────────────────────────────────────────────────────── */
     return (
@@ -63,9 +61,7 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
                      justify-center text-xs font-medium space-y-[2px] text-center
                      ${baseStyle}`}
         >
-          <span className="text-sm font-semibold">
-            {machineId ?? ''}
-          </span>
+          <span className="text-sm font-semibold">{machineId ?? ''}</span>
           <span>{progress != null ? `진척도: ${progress}%` : ''}</span>
           <span>{dateManager}</span>
         </Popover.Button>
@@ -81,8 +77,7 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
           leaveTo="scale-95 opacity-0"
         >
           <Popover.Panel
-            className="absolute z-20 mt-2 w-44 rounded-md bg-white
-                       shadow-lg ring-1 ring-black/10"
+            className="absolute z-20 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/10"
           >
             <Menu as="div" className="p-1 space-y-1">
               {/* 1) 체크리스트 */}
@@ -92,17 +87,11 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
                   return (
                     <button
                       onClick={
-                        disabled
-                          ? () => alert('먼저 장비를 입고시켜주세요.')
-                          : go('checklist')
+                        disabled ? () => alert('먼저 장비를 입고시켜주세요.') : go('checklist')
                       }
                       disabled={disabled}
                       className={`w-full px-3 py-2 text-left rounded ${
-                        disabled
-                          ? 'cursor-not-allowed text-gray-400'
-                          : active
-                          ? 'bg-gray-100'
-                          : ''
+                        disabled ? 'cursor-not-allowed text-gray-400' : active ? 'bg-gray-100' : ''
                       }`}
                     >
                       ✔️ 체크리스트
@@ -136,11 +125,11 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
                           ? () => alert('먼저 장비를 입고시켜주세요.')
                           : () => {
                               if (window.confirm('정말로 출하 하겠습니까?')) {
-                                /* 출하 → 성공 후 새로고침 */
+                                // 출하 → 성공 후 새로고침
                                 shipMutation.mutate(shipTargetId, {
                                   onSuccess: () => window.location.reload(),
                                 });
-                                /* 로그 정리 */
+                                // 로그 정리
                                 delMutation.mutate({ machineNo: shipTargetId });
                                 alert('출하가 완료되었습니다.');
                               }
@@ -160,12 +149,38 @@ const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
                   );
                 }}
               </Menu.Item>
+
+              {/* 4) 장비 이동 (NEW) ------------------------------------------------ */}
+              <Menu.Item>
+                {({ active }) => {
+                  const disabled = !machineId;
+                  return (
+                    <button
+                      onClick={
+                        disabled
+                          ? () => alert('먼저 장비를 입고시켜주세요.')
+                          : () => nav('/move-log')
+                      }
+                      disabled={disabled}
+                      className={`w-full px-3 py-2 text-left rounded ${
+                        disabled
+                          ? 'cursor-not-allowed text-gray-400'
+                          : active
+                          ? 'bg-gray-100'
+                          : ''
+                      }`}
+                    >
+                      🔀 장비 이동
+                    </button>
+                  );
+                }}
+              </Menu.Item>
             </Menu>
           </Popover.Panel>
         </Transition>
       </Popover>
     );
-  }
+  },
 );
 
 export default MachineButton;
