@@ -1,7 +1,9 @@
 // src/pages/OptionDetailPage.tsx
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import {useOptionLogInput} from './hooks/optionlog'
 import { useOptionChecklist} from '../hooks/OptionDetail';
+import { useAuth } from '../context/AuthContext';
 
 /**
  * 옵션 상세 페이지 컴포넌트
@@ -15,6 +17,10 @@ export default function OptionDetailPage() {
   const { id = '', optionName = '' } =
     useParams<{ id?: string; optionName?: string }>();
   const navigate = useNavigate();
+  const optionLog = useOptionLogInput();
+  const { manager } = useAuth();
+
+  
 
   // 데이터 조회
   const {
@@ -75,6 +81,13 @@ export default function OptionDetailPage() {
         }
       );
       if (!res.ok) throw new Error(`Status ${res.status}`);
+
+      await optionLog.mutateAsync({
+        machine_no : id,
+        manager : manager ?? '',
+      });
+
+
       alert('저장 완료!');
       navigate(-2);
     } catch (e: any) {

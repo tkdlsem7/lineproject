@@ -10,7 +10,7 @@ function LoginForm() {
   const [pw, setPw] = useState<string>('');           // ← pw(=password)
 
   /** ----------------------------- hooks ----------------------------- */
-  const { setUserNo } = useAuth();      
+  const { setUserNo, setManager  } = useAuth();      
   // context에서 제공하는 사용자 상태 hook
   // setUserNo = 로그인 성공 시 사용자 식별번호를 저장
   const navigate = useNavigate();
@@ -20,7 +20,7 @@ function LoginForm() {
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); // 폼의 기본 submit 동작 막기
 
-    const ok = await handleLoginSubmit(id, pw, setUserNo); // 로그인 요청
+    const ok = await handleLoginSubmit(id, pw,setManager,setUserNo); // 로그인 요청
     if (ok) navigate('/dashboard'); // 성공 -> dashboard로 이동
     else     alert('아이디 또는 비밀번호가 올바르지 않습니다.'); // 실패
   };
