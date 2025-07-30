@@ -66,13 +66,27 @@ export default function ABuildingView({
           const info = equipMap.get(slotCode);
           const prog = info?.progress;
 
-          /* 진척도별 배경색 계산 */
-          let bgClass = 'bg-gray-100 hover:bg-gray-200';
+          /* 진척도별 ― 단일(녹색계열) 팔레트
+             0~10%  : 흰색
+             10~25% : green-50
+             25~40% : green-100
+             40~55% : green-200
+             55~70% : green-300
+             70~85% : green-500
+             85~99% : green-700
+             100%   : green-900
+          ------------------------------------------------------------------ */
+          let bgClass = 'bg-gray-100 hover:bg-gray-200';  // 데이터 없을 때
+
           if (prog !== undefined) {
-            if (prog < 30) bgClass = 'bg-blue-600 hover:bg-blue-700 text-white';
-            else if (prog < 60) bgClass = 'bg-yellow-500 hover:bg-yellow-600 text-white';
-            else if (prog < 100) bgClass = 'bg-green-600 hover:bg-green-700 text-white';
-            else bgClass = 'bg-orange-600 hover:bg-orange-700 text-white';
+            if (prog < 10)       bgClass = 'bg-white hover:bg-green-50';
+            else if (prog < 25)  bgClass = 'bg-green-50 hover:bg-green-100';
+            else if (prog < 40)  bgClass = 'bg-green-100 hover:bg-green-200';
+            else if (prog < 55)  bgClass = 'bg-green-200 hover:bg-green-300';
+            else if (prog < 70)  bgClass = 'bg-green-300 hover:bg-green-400';
+            else if (prog < 85)  bgClass = 'bg-green-500 hover:bg-green-600 text-white';
+            else if (prog < 100) bgClass = 'bg-green-700 hover:bg-green-800 text-white';
+            else                 bgClass = 'bg-green-900 hover:bg-green-900 text-white';
           }
 
           return (

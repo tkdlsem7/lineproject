@@ -17,6 +17,7 @@ from .routers.equipmentdel import router as equipmentdel
 from .routers.moveinfo import router as moveinfor
 from .routers.equipment_move import router as equipmentmove
 from .routers.optionloginput import router as optionlog
+from .routers.equipment_move_log import router as movelog
 
 # (추가 라우터가 있으면 아래처럼 계속 import)
 # from .routers.user import router as user_router
@@ -64,6 +65,7 @@ app.include_router(equipmentdel, prefix="/api")
 app.include_router(moveinfor, prefix="/api")
 app.include_router(equipmentmove, prefix="/api")
 app.include_router(optionlog, prefix="/api")
+app.include_router(movelog, prefix="/api")
 
 # app.include_router(user_router)
 
