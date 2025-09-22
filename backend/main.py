@@ -1,80 +1,84 @@
-# 📁 backend/main.py
+# backend/main.py
+# ─────────────────────────────────────────────────────────────
+# FastAPI 엔트리
+# - /api 하위에 sub-app 마운트 (✅ 통일)
+# - 모든 라우터는 /api 하위에만 연결(혼용 금지)
+# - Startup: DB 연결 확인 + 테이블 생성
+# ─────────────────────────────────────────────────────────────
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# ───────────────────────────────────────────────
-# 1) 패키지 내부(relative) import 권장  ──
-#    main.py 는 backend 패키지 안에 있으므로 .routers 로 시작
-# ───────────────────────────────────────────────
-from .routers.auth           import router as auth_router
-from .routers.equip_progress import router as equip_progress_router
-from .routers.equipment import router as equipment
-from .routers.option import router as option_router
-from .routers.OptionDetail import router as detail_router
-from .routers.optionupdate import router as updateoption
-from .routers.equipment_log import router as equipmentlog
-from .routers.equipmentdel import router as equipmentdel
-from .routers.moveinfo import router as moveinfor
-from .routers.equipment_move import router as equipmentmove
-from .routers.optionloginput import router as optionlog
-from .routers.equipment_move_log import router as movelog
+# 상대 임포트 유지
+from .Login.routers import router as auth_router
+from .Option.routers import router as option_router
+from .Modifyoption.routers import router as checklist_router
+from .EquipmentInfo.routers import router as equipment_router
+from .MainDashboard.routers import router as dashboard_router
+from .ProgressChecklist.routers import router as progress_router
+from .EquipmentMoving.routers import router as move_router
+from .troubleshoot.routers import router as troubleshoot_router
+from .setup.routers import router as setup_router
 
-# (추가 라우터가 있으면 아래처럼 계속 import)
-# from .routers.user import router as user_router
+from .deps import engine
 
-app = FastAPI(
-    title="Equipment Progress API",
-    version="0.1.0",
-)
+# 로그인/공용 Base 둘 다 커버
+from .Login.models import Base as LoginBase
+from .db.database import Base as DBBase
 
-# ───────────────────────────────────────────────
-# 2) CORS 설정
-# ───────────────────────────────────────────────
-origins = [
-    "http://localhost:3000",  # CRA
-    "http://localhost:5173",  # Vite
-]
+# metadata 등록 보장용 임포트
+from .Login import models as _login_models         # noqa: F401
+from .Option import models as _option_models       # noqa: F401
+from .MainDashboard import models as _dash_models  # noqa: F401
+
+log = logging.getLogger("uvicorn.error")
+
+app = FastAPI(title="lineproject API")
+
+# 개발 편의용 CORS (운영에서는 화이트리스트로 제한 권장)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,        # 개발 중엔 ["*"] 로 열어도 OK
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "*",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ───────────────────────────────────────────────
-# 3) 헬스 체크 엔드포인트
-# ───────────────────────────────────────────────
-@app.get("/", tags=["Health"])
-def root():
-    return {"message": "✅ FastAPI is running"}
+# ✅ /api 하위에 sub-app 마운트
+api = FastAPI(title="lineproject API (sub)")
+app.mount("/api", api)
 
-# ───────────────────────────────────────────────
-# 4) 라우터 등록
-#    * 개별 라우터 파일에서 prefix, tags 지정했으므로
-#      여기서는 include_router 만 호출하면 됨
-# ───────────────────────────────────────────────
-app.include_router(auth_router)
-app.include_router(equipment , prefix="/api")
-app.include_router(equip_progress_router)
-app.include_router(option_router, prefix="/api")
-app.include_router(detail_router, prefix="/api")
-app.include_router(updateoption, prefix="/api")
-app.include_router(equipmentlog, prefix="/api")
-app.include_router(equipmentdel, prefix="/api")
-app.include_router(moveinfor, prefix="/api")
-app.include_router(equipmentmove, prefix="/api")
-app.include_router(optionlog, prefix="/api")
-app.include_router(movelog, prefix="/api")
+# ✅ 모든 라우터는 /api 하위에만 연결 (혼용 금지)
+api.include_router(auth_router)        # /api/auth/...
+api.include_router(option_router)      # /api/task-options ...
+api.include_router(checklist_router)   # /api/...
+api.include_router(dashboard_router)   # /api/dashboard/...
+api.include_router(equipment_router)   # /api/equipment/...
+api.include_router(progress_router)    # /api/progress/...
+api.include_router(move_router)        # /api/move/...
+api.include_router(troubleshoot_router)
+api.include_router(setup_router)
 
-# app.include_router(user_router)
+@app.get("/health")
+def health():
+    return {"ok": True}
 
-# ───────────────────────────────────────────────
-# (선택) 애플리케이션 실행 시 등록된 라우트 출력
-# ───────────────────────────────────────────────
-if __name__ == "__main__":
-    # python backend/main.py 로 실행했을 때만 실행
-    from fastapi.routing import APIRoute
-    for r in app.router.routes:
-        if isinstance(r, APIRoute):
-            print(f"▶ {r.path}  →  {r.name}")
+@app.on_event("startup")
+def on_startup() -> None:
+    try:
+        # DB 연결 확인
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+
+        # 테이블 생성(이미 있으면 패스)
+        LoginBase.metadata.create_all(bind=engine)
+        DBBase.metadata.create_all(bind=engine)
+
+        log.info("✅ Startup OK: DB connected and tables checked.")
+    except Exception:
+        log.exception("❌ Startup failed (DB/init). Check DATABASE_URL & Postgres status.")
+        raise

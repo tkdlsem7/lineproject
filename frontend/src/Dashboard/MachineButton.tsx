@@ -1,186 +1,239 @@
-// 📁 src/features/Dashboard/MachineButton.tsx
-/* ────────────────────────────────────────────────────────── */
-/* UI · 네트워크 라이브러리 */
-import { Popover, Menu, Transition } from '@headlessui/react';
-import React, { Fragment, forwardRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useDeleteEquipmentLog } from '../hooks/equipmentdel';   // 삭제 Mutation
-import { useShipEquipment }    from '../hooks/shipdate';         // 출하 Mutation
+import React from "react";
+import { shipEquipment } from "./DashboardHandler";
 
-/* ────────────────────────────────────────────────────────── */
-/* ① prop 타입 확장: site 추가                                */
-export interface MachineButtonProps {
-  slotCode:     string;              // ex) "B6"
-  machineId?:   string | null;       // ex) "J-07-02"
-  manager?:     string | null;       // ex) "홍길동"
-  progress?:    number | null;       // ex) 75
-  shippingDate?: string | null;      // ex) "2025-07-30"
-  bgClass?:     string;              // ABuildingView에서 주입
-  site:         string;              // '본사' | '부항리' | '진우리'
+const colorByProgress = (p: number) => {
+  if (p >= 100) return "bg-green-600 text-white";
+  if (p >= 50) return "bg-amber-500 text-white";
+  if (p > 0) return "bg-blue-600 text-white";
+  return "bg-gray-300 text-gray-700";
+};
+
+const LS = {
+  SELECTED_IS_EMPTY: "selected_machine_is_empty",
+  SELECTED_ID: "selected_machine_id",
+  SELECTED_AT: "selected_machine_saved_at",
+  INTENT: "machine_info_intent",
+} as const;
+
+const EMPTY_MARKERS = new Set(["", "-", "empty", "빈슬롯"]);
+
+type InfoIntent = {
+  machineId: string;
+  fields: { progressEmpty: boolean; shipDateEmpty: boolean; managerEmpty: boolean };
+  values: { progress: number | null; shipDate: string | null; manager: string | null };
+  hasAnyEmpty: boolean;
+  setAt: string;
+  origin: "dashboard";
+  version: 1;
+};
+
+type Props = {
+  title: string;
+  progress: number;
+  shipDate?: string | Date | null;
+  manager?: string | null;
+  slotCode: string;                    // ✅ 출하 API용
+  sizeClass?: string;
+  className?: string;
+  isOpen?: boolean;
+  onToggleMenu?: () => void;
+  onOpenInfo?: () => void;
+  onOpenChecklist?: (machineId: string) => void;
+  onOpenMove?: (machineId: string) => void;
+  onShipped?: (slotCode: string) => void;
+};
+
+export default function MachineButton({
+  title,
+  progress,
+  shipDate,
+  manager,
+  slotCode,
+  sizeClass = "w-[220px] h-[120px]",
+  className = "",
+  isOpen,
+  onToggleMenu,
+  onOpenInfo,
+  onOpenChecklist,
+  onOpenMove,
+  onShipped,
+}: Props) {
+  const [openLocal, setOpenLocal] = React.useState(false);
+  const open = typeof isOpen === "boolean" ? isOpen : openLocal;
+  const toggle = () =>
+    typeof isOpen === "boolean" ? onToggleMenu?.() : setOpenLocal((v) => !v);
+
+  const lastToken = React.useMemo(() => {
+    const raw = title ?? "";
+    const parts = raw.split(/[/|>]/); // 전역 confirm ESLint 등의 경고 피하려 escape 제거
+    const tail = parts[parts.length - 1] ?? "";
+    return tail.trim().toLowerCase();
+  }, [title]);
+
+  const isEmptyMachine = React.useMemo(() => EMPTY_MARKERS.has(lastToken), [lastToken]);
+
+  const shipDateText = React.useMemo(() => {
+    if (!shipDate) return "-";
+    if (shipDate instanceof Date) return shipDate.toISOString().slice(0, 10);
+    return String(shipDate);
+  }, [shipDate]);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (isEmptyMachine) {
+        localStorage.setItem(LS.SELECTED_IS_EMPTY, "1");
+        localStorage.removeItem(LS.SELECTED_ID);
+        localStorage.removeItem(LS.INTENT);
+        (window as any).__MACHINE_INFO_INTENT__ = undefined;
+        window.alert("빈 슬롯을 선택하셨습니다.");
+      } else {
+        localStorage.setItem(LS.SELECTED_IS_EMPTY, "0");
+        localStorage.setItem(LS.SELECTED_ID, title);
+        localStorage.setItem(LS.SELECTED_AT, new Date().toISOString());
+        window.alert(`${title} 호기를 선택하셨습니다.`);
+      }
+    } catch {}
+    toggle();
+  };
+
+  const buildInfoIntent = (): InfoIntent => {
+    if (isEmptyMachine) {
+      return {
+        machineId: "",
+        fields: { progressEmpty: true, shipDateEmpty: true, managerEmpty: true },
+        values: { progress: null, shipDate: null, manager: null },
+        hasAnyAny: true,
+        hasAnyEmpty: true,
+        setAt: new Date().toISOString(),
+        origin: "dashboard",
+        version: 1 as const,
+      } as any;
+    }
+    const progressEmpty = !Number.isFinite(progress);
+    const shipDateEmpty = shipDateText === "-";
+    const managerEmpty = !manager || manager.trim().length === 0;
+    return {
+      machineId: title ?? "",
+      fields: { progressEmpty, shipDateEmpty, managerEmpty },
+      values: {
+        progress: Number.isFinite(progress) ? progress : null,
+        shipDate: shipDateEmpty ? null : shipDateText,
+        manager: manager ?? null,
+      },
+      hasAnyEmpty: progressEmpty || shipDateEmpty || managerEmpty,
+      setAt: new Date().toISOString(),
+      origin: "dashboard",
+      version: 1 as const,
+    };
+  };
+
+  const storeInfoIntent = (intent: InfoIntent) => {
+    try { localStorage.setItem(LS.INTENT, JSON.stringify(intent)); } catch {}
+    (window as any).__MACHINE_INFO_INTENT__ = intent;
+  };
+
+  const handleOpenInfo = () => {
+    try {
+      const intent = buildInfoIntent();
+      localStorage.setItem(LS.SELECTED_IS_EMPTY, isEmptyMachine ? "1" : "0");
+      if (isEmptyMachine) {
+        localStorage.removeItem(LS.SELECTED_ID);
+      } else {
+        localStorage.setItem(LS.SELECTED_ID, title);
+        localStorage.setItem(LS.SELECTED_AT, new Date().toISOString());
+      }
+      storeInfoIntent(intent);
+    } catch {}
+    onOpenInfo?.();
+  };
+
+  const handleOpenChecklist = () => {
+    if (isEmptyMachine) return window.alert("빈 슬롯은 체크리스트를 열 수 없습니다.");
+    try {
+      localStorage.setItem(LS.SELECTED_IS_EMPTY, "0");
+      localStorage.setItem(LS.SELECTED_ID, title);
+      localStorage.setItem(LS.SELECTED_AT, new Date().toISOString());
+    } catch {}
+    onOpenChecklist?.(title);
+  };
+
+  const handleOpenMove = () => {
+    if (isEmptyMachine) return window.alert("빈 슬롯은 이동할 장비가 없습니다.");
+    try {
+      localStorage.setItem(LS.SELECTED_IS_EMPTY, "0");
+      localStorage.setItem(LS.SELECTED_ID, title);
+      localStorage.setItem(LS.SELECTED_AT, new Date().toISOString());
+    } catch {}
+    onOpenMove?.(title);
+  };
+
+  const handleShip = async () => {
+    if (isEmptyMachine) return window.alert("빈 슬롯은 출하 처리할 수 없습니다.");
+    if (!(Number.isFinite(progress) && progress >= 100))
+      return window.alert("진척도 100%일 때만 출하 가능합니다.");
+
+    // eslint-disable-next-line no-alert
+    const ok = typeof window !== "undefined" &&
+      window.confirm(`[${slotCode}] 슬롯의 ${title} 장비를 출하 처리할까요?`);
+    if (!ok) return;
+
+    try {
+      await shipEquipment(slotCode);
+      alert("출하 처리 완료!");
+      setOpenLocal(false);
+      onShipped?.(slotCode);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "출하 처리 중 오류가 발생했습니다.");
+    }
+  };
+
+  const menuItems = [
+    { label: "✅ 체크리스트", onClick: handleOpenChecklist },
+    { label: "🛠 장비 정보 입력", onClick: handleOpenInfo },
+    { label: "🚚 출하 처리", onClick: handleShip },
+    { label: "🔁 장비 이동", onClick: handleOpenMove },
+  ];
+
+  return (
+    <div
+      data-card-root="1"
+      className={`relative ${sizeClass} rounded-2xl px-4 py-3 shadow-md ${colorByProgress(progress)} ${className}`}
+      onClick={handleClick}
+      title="메뉴 보기"
+    >
+      <div className="text-base sm:text-lg font-extrabold leading-6">{title || "-"}</div>
+
+      <div className="mt-1 text-[12px] sm:text-[13px] leading-5 opacity-95">
+        <div>진척도: {Number.isFinite(progress) ? `${progress}%` : "-"}</div>
+        <div>
+          출하: {shipDateText}
+          {Number.isFinite(progress) && progress >= 100 && (
+            <span className="ml-2 rounded bg-white/20 px-1.5 py-[1px] text-[10px]">출하 준비됨</span>
+          )}
+        </div>
+        <div>담당: {manager ?? "-"}</div>
+      </div>
+
+      {open && (
+        <div
+          data-menu-root="1"
+          className="absolute left-0 top-full z-50 mt-2 w-[220px] rounded-2xl border bg-white p-2 text-slate-800 shadow-2xl"
+          onClick={(ev) => ev.stopPropagation()}
+        >
+          {menuItems.map((mi) => (
+            <button
+              key={mi.label}
+              type="button"
+              onClick={(ev) => { ev.stopPropagation(); mi.onClick(); }}
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-[15px] hover:bg-slate-50"
+            >
+              {mi.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
-/* ────────────────────────────────────────────────────────── */
-
-const MachineButton = forwardRef<HTMLButtonElement, MachineButtonProps>(
-  function MachineButton(
-    {
-      slotCode,
-      machineId,
-      manager,
-      progress,
-      shippingDate,
-      bgClass,
-      site,
-    },
-    ref
-  ) {
-    /* ─── 훅 ─── */
-    const nav = useNavigate();
-    const shipMutation = useShipEquipment();
-    const delMutation  = useDeleteEquipmentLog();
-
-    /* ─── 공통 파생 값 ─── */
-    const shipTargetId   = machineId ?? slotCode; // 장비 ID(없으면 슬롯)
-    const dateText       = shippingDate ? `출하: ${shippingDate.slice(5)}` : '';
-    const managerText    = manager ? ` (${manager})` : '';
-    const dateManager    = dateText || manager ? `${dateText}${managerText}` : '';
-    const baseStyle      = bgClass ?? 'bg-indigo-600 hover:bg-indigo-700 text-white';
-
-    /* ② 공통 페이지 이동 함수 ------------------------------------ */
-    const go = (path: string) => () =>
-      nav(`/equipment/${shipTargetId}/${path}?site=${encodeURIComponent(site)}`);
-
-    /* ──────────────────────────────────────────────────────────── */
-    return (
-      <Popover className="relative">
-        {/* ▼ 버튼 본체 */}
-        <Popover.Button
-          ref={ref}
-          aria-label={slotCode}
-          className={`w-32 h-20 rounded-md transition active:scale-[.97]
-                     focus:outline-none shadow-lg flex flex-col items-center
-                     justify-center text-xs font-medium space-y-[2px] text-center
-                     ${baseStyle}`}
-        >
-          <span className="text-sm font-semibold">{machineId ?? ''}</span>
-          <span>{progress != null ? `진척도: ${progress}%` : ''}</span>
-          <span>{dateManager}</span>
-        </Popover.Button>
-
-        {/* ▼ 팝업 메뉴 */}
-        <Transition
-          as={Fragment}
-          enter="transition ease-out duration-100"
-          enterFrom="scale-95 opacity-0"
-          enterTo="scale-100 opacity-100"
-          leave="transition ease-in duration-75"
-          leaveFrom="scale-100 opacity-100"
-          leaveTo="scale-95 opacity-0"
-        >
-          <Popover.Panel
-            className="absolute z-20 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black/10"
-          >
-            <Menu as="div" className="p-1 space-y-1">
-              {/* 1) 체크리스트 */}
-              <Menu.Item>
-                {({ active }) => {
-                  const disabled = !machineId;
-                  return (
-                    <button
-                      onClick={
-                        disabled ? () => alert('먼저 장비를 입고시켜주세요.') : go('checklist')
-                      }
-                      disabled={disabled}
-                      className={`w-full px-3 py-2 text-left rounded ${
-                        disabled ? 'cursor-not-allowed text-gray-400' : active ? 'bg-gray-100' : ''
-                      }`}
-                    >
-                      ✔️ 체크리스트
-                    </button>
-                  );
-                }}
-              </Menu.Item>
-
-              {/* 2) 장비 정보 입력 */}
-              <Menu.Item>
-                {({ active }) => (
-                  <button
-                    onClick={go('edit')}
-                    className={`w-full px-3 py-2 text-left rounded ${
-                      active ? 'bg-gray-100' : ''
-                    }`}
-                  >
-                    🛠 장비 정보 입력
-                  </button>
-                )}
-              </Menu.Item>
-
-              {/* 3) 출하 처리 */}
-              <Menu.Item>
-                {({ active }) => {
-                  const disabled = !machineId;
-                  return (
-                    <button
-                      onClick={
-                        disabled
-                          ? () => alert('먼저 장비를 입고시켜주세요.')
-                          : () => {
-                              if (window.confirm('정말로 출하 하겠습니까?')) {
-                                // 출하 → 성공 후 새로고침
-                                shipMutation.mutate(shipTargetId, {
-                                  onSuccess: () => window.location.reload(),
-                                });
-                                // 로그 정리
-                                delMutation.mutate({ machineNo: shipTargetId });
-                                alert('출하가 완료되었습니다.');
-                              }
-                            }
-                      }
-                      disabled={disabled || shipMutation.isPending}
-                      className={`w-full px-3 py-2 text-left rounded ${
-                        disabled
-                          ? 'cursor-not-allowed text-gray-400'
-                          : active
-                          ? 'bg-gray-100'
-                          : ''
-                      } ${shipMutation.isPending ? 'opacity-50' : ''}`}
-                    >
-                      🚚 출하 처리
-                    </button>
-                  );
-                }}
-              </Menu.Item>
-
-              {/* 4) 장비 이동 (NEW) ------------------------------------------------ */}
-              <Menu.Item>
-                {({ active }) => {
-                  const disabled = !machineId;
-                  return (
-                    <button
-                      onClick={
-                        disabled
-                          ? () => alert('먼저 장비를 입고시켜주세요.')
-                          : () => nav('/move-log')
-                      }
-                      disabled={disabled}
-                      className={`w-full px-3 py-2 text-left rounded ${
-                        disabled
-                          ? 'cursor-not-allowed text-gray-400'
-                          : active
-                          ? 'bg-gray-100'
-                          : ''
-                      }`}
-                    >
-                      🔀 장비 이동
-                    </button>
-                  );
-                }}
-              </Menu.Item>
-            </Menu>
-          </Popover.Panel>
-        </Transition>
-      </Popover>
-    );
-  },
-);
-
-export default MachineButton;

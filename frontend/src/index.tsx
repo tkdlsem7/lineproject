@@ -1,34 +1,44 @@
 // 📁 src/index.tsx
-import './index.css';                   // ✅ 항상 최상단
+// ─────────────────────────────────────────────────────────────
+// 앱 엔트리: 전역 스타일 → React Query → 인증 컨텍스트 → 라우터 → App
+//  - App 안에서 BrowserRouter를 또 감싸지 않았다면 여기서 감싸는 구조가 일반적
+//  - App 내부에도 BrowserRouter가 있다면 <BrowserRouter> 블록을 제거하세요.
+// ─────────────────────────────────────────────────────────────
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import "./index.css"; // ✅ 전역 스타일은 항상 최상단
 
-import App from './App';
-import { AuthProvider } from './context/AuthContext';
+import React from "react";
+import ReactDOM from "react-dom/client";
 
-/* ─── React Query ─── */
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from './queryClient';      // 앞서 만든 singleton
+// 라우팅
+import { BrowserRouter } from "react-router-dom";
 
-/* (선택) 라우터를 index에서 감싸고 싶다면 추가 */
-import { BrowserRouter } from 'react-router-dom';
-/* (선택) devtools가 필요하면
-   import { ReactQueryDevtools } from '@tanstack/react-query-devtools'; */
+// React Query
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./queryClient"; // 싱글턴 클라이언트
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+// 전역 인증 컨텍스트(네가 만든 AuthProvider 사용)
+import { AuthProvider } from "./lib/AuthContext"; // ← 경로: src/lib/AuthContext.tsx 기준
+
+// 실제 앱S
+import App from "./App";
+
+// (선택) React Query Devtools를 쓰고 싶다면 주석 해제
+// import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {/* ① 전역 Query Provider */}
+    {/* ① 전역 데이터 캐시/동기화 (React Query) */}
     <QueryClientProvider client={queryClient}>
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
 
-      {/* ② 인증 컨텍스트 (이 안에서도 useQuery 사용 가능) */}
+      {/* ② 전역 인증 상태 (이 내부 어디서든 useAuth 사용 가능) */}
       <AuthProvider>
-        {/* ③ 라우터: App 내부에 이미 BrowserRouter가 있다면 이 줄은 삭제 */}
+        {/* ③ 라우터: App 내부에 BrowserRouter가 이미 있으면 이 블록을 제거하세요 */}
         <BrowserRouter>
           <App />
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 );
