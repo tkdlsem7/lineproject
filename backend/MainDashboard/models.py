@@ -80,3 +80,5 @@ class EquipmentShipmentLog(Base):
     site = Column(String(30), nullable=False)
     slot = Column(String(5), nullable=True)      # 스샷 기준 nullable
     customer = Column(String(50), nullable=False)
+    progress = Column(Numeric(5,2), nullable=True)
+    serial_number = Column(String(50), nullable=True)

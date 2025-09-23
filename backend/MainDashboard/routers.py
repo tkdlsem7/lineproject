@@ -94,19 +94,22 @@ def ship_equipment(
         raise HTTPException(status_code=404, detail="슬롯을 찾을 수 없습니다.")
     if not row.machine_id or not row.machine_id.strip():
         raise HTTPException(status_code=400, detail="빈 슬롯은 출하 처리할 수 없습니다.")
-    if float(row.progress or 0) < 100:
-        raise HTTPException(status_code=400, detail="진척도 100%일 때만 출하 가능합니다.")
+    if (row.status or "").strip() != "가능" :
+        raise HTTPException(status_code=400, detail='status가 "가능일 때만 출하 가능합니다')
 
     # 2) 출하 로그 INSERT  (컬럼명이 machine_no인 스키마라면 속성명도 machine_no로)
-    ship_log = EquipmentShipmentLog(
-        machine_no=row.machine_id.strip(),                     # ← 스키마에 맞춰 사용
-        manager=(row.manager or "미지정").strip(),
-        shipped_date=(row.shipping_date or _date.today()),
-        site=(row.site or "본사").strip(),
-        slot=row.slot_code,
-        customer=(getattr(row, "customer", None) or "미지정").strip(),
+    db.add(
+        EquipmentShipmentLog(
+            machine_no = row.machine_id.strip(),
+            manager = (row.manager or "미지정").strip(),
+            shipped_date = _date.today(),
+            site = row.site.strip(),
+            slot = row.slot_code.strip(),
+            customer = (row.customer or "미지정").strip(),
+            progress = (row.progress or 0),
+            serial_number = (row.serial_number or "").strip(),
+        )
     )
-    db.add(ship_log)
 
     # 3) 일반 액션 로그
     db.add(EquipmentLog(action="SHIP", slot_code=row.slot_code, machine_id=row.machine_id))

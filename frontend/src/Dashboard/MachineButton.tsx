@@ -169,9 +169,6 @@ export default function MachineButton({
   };
 
   const handleShip = async () => {
-    if (isEmptyMachine) return window.alert("빈 슬롯은 출하 처리할 수 없습니다.");
-    if (!(Number.isFinite(progress) && progress >= 100))
-      return window.alert("진척도 100%일 때만 출하 가능합니다.");
 
     // eslint-disable-next-line no-alert
     const ok = typeof window !== "undefined" &&
