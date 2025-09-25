@@ -12,7 +12,7 @@ type EquipmentRow = {
 };
 
 // 프로젝트 설정에 따라 /api 프리픽스를 사용하지 않으면 "" 로 변경
-const API_BASE = "";
+const API_BASE = "/api";
 
 // 요구: 사이트는 3개 고정
 const SITES = ["본사", "진우리", "부항리"] as const;

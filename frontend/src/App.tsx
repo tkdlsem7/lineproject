@@ -6,27 +6,27 @@
 import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
-
-// 💡 네가 쓰는 컴포넌트 경로 그대로 맞춰주세요
 import LoginForm from "./Login/Login_function";
 import MainPage from "./Main/MainPage";
 import OptionConfigPage from "./Option/OptionConfigPage";
 import ModifyOptionsPage from "./Option/ModifyOptionsPage";
-// ✅ 대시보드 페이지 추가
 import DashboardMain from "./Dashboard/DashboardMain";
 import EquipmentInfoPage from "./Equipment Information/EquipmentInfoPage";
 import ProgressChecklistPage from "./Progress Checklist/ProgressChecklistPage";
 import MoveEquipmentPage from "./MachineMoving/MoveEquipmentPage";
 import TroubleShootPage from "./Troubleshoot/TroubleShootPage";
-import SetupDefectEntryPages from "./SetupDefectEntryPage/SetupDefectEntryPage"
+import SetupDefectEntryPages from "./SetupDefectEntryPage/SetupDefectEntryPage";
 
-// ✅ 토큰만 확인하는 최소 가드 (AuthContext 여부와 무관)
-//   - 기존에 다른 가드가 있어도, 이 기준이면 토큰이 있으면 통과
+import BoardPage from "./Board/Boardpage";
+import BoardNewPage from "./Board/BoardNewPage";
+import BoardEditPage from "./Board/BoardEditPage";
+import BoardDetailPage from "./Board/BoardDetailPage";
+
+// ✅ 토큰만 확인하는 최소 가드
 const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const token = localStorage.getItem("access_token");
   const location = useLocation();
   if (!token) {
-    // 토큰 없으면 로그인으로, 이후 돌아올 수 있게 redirect param 전달
     return <Navigate to={`/?redirect=${encodeURIComponent(location.pathname)}`} replace />;
   }
   return children;
@@ -44,7 +44,7 @@ export default function App() {
       {/* ① 로그인 (공개) */}
       <Route path="/" element={<LoginForm />} />
 
-      {/* ② 메인 (필요 시 공개 유지) */}
+      {/* ② 메인 (공개) */}
       <Route path="/main" element={<MainPage userName={getUserName()} />} />
 
       {/* ③ 대시보드 — 토큰 필요 */}
@@ -57,7 +57,7 @@ export default function App() {
         }
       />
 
-      {/* ④ 옵션 목록 — 토큰 필요 */}
+      {/* ④ 옵션 — 토큰 필요 */}
       <Route
         path="/options"
         element={
@@ -66,8 +66,6 @@ export default function App() {
           </RequireAuth>
         }
       />
-
-      {/* ⑤ 옵션 상세 수정 — 토큰 필요 */}
       <Route
         path="/options/modify/:id"
         element={
@@ -77,12 +75,38 @@ export default function App() {
         }
       />
 
+      {/* 기타 페이지(필요시 공개 유지) */}
       <Route path="/equipment" element={<EquipmentInfoPage />} />
       <Route path="/progress-checklist" element={<ProgressChecklistPage />} />
       <Route path="/machine-move" element={<MoveEquipmentPage />} />
       <Route path="/troubleshoot" element={<TroubleShootPage />} />
       <Route path="/SetupDefectEntryPage" element={<SetupDefectEntryPages />} />
-        
+
+      {/* ✅ 게시판 라우트 정리 */}
+      {/* 목록/상세: 공개 (읽기 전용) */}
+      <Route path="/board" element={<BoardPage />} />
+      <Route path="/board/:no" element={<BoardDetailPage />} />
+
+      {/* 글쓰기/수정: 토큰 필요 */}
+      <Route
+        path="/board/new"
+        element={
+          <RequireAuth>
+            <BoardNewPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/board/:no/edit"
+        element={
+          <RequireAuth>
+            <BoardEditPage />
+          </RequireAuth>
+        }
+      />
+
+      {/* 과거 경로 호환: /BoardPage → /board */}
+      <Route path="/BoardPage" element={<Navigate to="/board" replace />} />
 
       {/* ⑥ 나머지 경로는 로그인으로 */}
       <Route path="*" element={<Navigate to="/" replace />} />

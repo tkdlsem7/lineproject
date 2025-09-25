@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ABuildingView from "./ABuildingView";
+import IBuildingView from "./IBuildingView"; // ★ I동 뷰
+import BBuildingView from "./BBuildingView";
 import { fetchSlots, type SlotRow } from "./DashboardHandler";
 
 const LS_BUILDING = "dash_building";
@@ -8,7 +10,10 @@ const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
 function useDebounced<T>(v: T, d = 200): T {
   const [x, setX] = useState(v);
-  useEffect(() => { const id = setTimeout(() => setX(v), d); return () => clearTimeout(id); }, [v, d]);
+  useEffect(() => {
+    const id = setTimeout(() => setX(v), d);
+    return () => clearTimeout(id);
+  }, [v, d]);
   return x;
 }
 
@@ -28,24 +33,36 @@ export default function DashboardMain() {
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState<number>(AUTO_REFRESH_MS);
 
-  useEffect(() => { localStorage.setItem(LS_BUILDING, building); }, [building]);
+  useEffect(() => {
+    localStorage.setItem(LS_BUILDING, building);
+  }, [building]);
 
   const load = useCallback(async () => {
     try {
-      setLoading(true); setError("");
+      setLoading(true);
+      setError("");
       const list = await fetchSlots({ site, building });
-      setRows(list); setLastSyncAt(new Date()); setCountdown(AUTO_REFRESH_MS);
+      setRows(list);
+      setLastSyncAt(new Date());
+      setCountdown(AUTO_REFRESH_MS);
     } catch (e: any) {
       setError(e?.message ?? "목록을 불러오지 못했습니다.");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [site, building]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
     const tick = setInterval(() => setCountdown(ms => (ms > 1000 ? ms - 1000 : 0)), 1000);
     const auto = setInterval(() => void load(), AUTO_REFRESH_MS);
-    return () => { clearInterval(tick); clearInterval(auto); };
+    return () => {
+      clearInterval(tick);
+      clearInterval(auto);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -63,7 +80,9 @@ export default function DashboardMain() {
   };
 
   const equipMap = useMemo(() => {
-    const m = new Map<string, SlotRow>(); rows.forEach(r => m.set(r.slot_code.toUpperCase(), r)); return m;
+    const m = new Map<string, SlotRow>();
+    rows.forEach(r => m.set(r.slot_code.toUpperCase(), r));
+    return m;
   }, [rows]);
 
   return (
@@ -98,8 +117,8 @@ export default function DashboardMain() {
               새로고침
             </button>
             <div className="text-xs text-slate-600">
-              마지막 동기화: {lastSyncAt ? lastSyncAt.toLocaleTimeString() : "-"} ·
-              {" "}자동 새로고침까지 {Math.ceil(countdown / 1000)}s
+              마지막 동기화: {lastSyncAt ? lastSyncAt.toLocaleTimeString() : "-"} ·{" "}
+              자동 새로고침까지 {Math.ceil(countdown / 1000)}s
             </div>
           </div>
         </div>
@@ -162,9 +181,22 @@ export default function DashboardMain() {
             <ABuildingView
               equipMap={equipMap}
               highlightedSlot={highlightedSlot}
-              onShipped={() => void load()}   // ✅ 출하 후 새로고침
+              onShipped={() => void load()} // 출하 후 새로고침
+            />
+          ) : building === "B" ? (
+            <BBuildingView
+              equipMap={equipMap}
+              highlightedSlot={highlightedSlot}
+              onShipped={() => void load()}
+            />  
+          ) : building === "I" ? ( // ★ I동 연결
+            <IBuildingView
+              equipMap={equipMap}
+              highlightedSlot={highlightedSlot}
+              onShipped={() => void load()}
             />
           ) : (
+            // B동 등 나머지
             <div className="rounded-xl border bg-white p-10 text-center text-slate-600">
               <div className="text-xl font-semibold mb-2">{building}동</div>
               <div>이 레이아웃은 추후 A동과 동일한 방식으로 확장됩니다.</div>

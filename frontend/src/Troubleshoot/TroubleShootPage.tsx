@@ -10,7 +10,7 @@ const rawBase =
     ? ((process as any)?.env?.REACT_APP_API_BASE as string | undefined)
     : undefined);
 
-export const API_BASE: string = rawBase ? rawBase.replace(/\/+$/, '') : '';
+export const API_BASE: string = rawBase ? rawBase.replace(/\/+$/, '') : '/api';
 
 type HwSw = 'H/W' | 'S/W';
 

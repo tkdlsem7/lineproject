@@ -17,6 +17,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName = '조성국' }) =
   const ROUTE_OPTIONS   = '/options';   // 옵션 설정 페이지 경로
   const ROUTE_TROUBLESHOOT = '/troubleshoot'
   const SetupDefectEntryPage = '/SetupDefectEntryPage'
+  const ROUTE_BOARD = '/BoardPage'
 
 
   // 하위 탭 노출 제어: 시스템 생산실일 때만 보이도록 기본값 true
@@ -102,7 +103,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName = '조성국' }) =
       {showSubTabs && (
         <div className="mb-6">
           <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 p-1.5">
-            {['Dashboard', 'Option Configuration', 'Log Charts', 'Trouble Shoot', 'Row data'].map((tab) => (
+            {['Dashboard', 'Option Configuration', 'Log Charts', 'Trouble Shoot', 'Row data', 'Board'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => {
@@ -114,6 +115,8 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName = '조성국' }) =
                     navigate(ROUTE_TROUBLESHOOT); // ← 추가
                   } else if (tab === "Row data") {
                     navigate(SetupDefectEntryPage);
+                  } else if  (tab === 'Board') {
+                    navigate(ROUTE_BOARD);
                   }
                 }}
                 className={`rounded-full px-4 py-2 text-base ${

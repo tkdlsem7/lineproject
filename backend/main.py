@@ -19,6 +19,7 @@ from .ProgressChecklist.routers import router as progress_router
 from .EquipmentMoving.routers import router as move_router
 from .troubleshoot.routers import router as troubleshoot_router
 from .setup.routers import router as setup_router
+from .board_post.routers import router as board_post_router
 
 from .deps import engine
 
@@ -62,6 +63,7 @@ api.include_router(progress_router)    # /api/progress/...
 api.include_router(move_router)        # /api/move/...
 api.include_router(troubleshoot_router)
 api.include_router(setup_router)
+api.include_router(board_post_router)
 
 @app.get("/health")
 def health():

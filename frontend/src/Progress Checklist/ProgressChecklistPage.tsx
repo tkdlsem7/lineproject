@@ -40,7 +40,7 @@ const ProgressChecklistPage: React.FC = () => {
     (async () => {
         try {
         const res = await axios.get<ChecklistResponse>(
-            `/progress/checklist/${encodeURIComponent(machineId)}`
+            `/api/progress/checklist/${encodeURIComponent(machineId)}`
         );
         setData(res.data);
 
@@ -108,7 +108,7 @@ const ProgressChecklistPage: React.FC = () => {
 
     try {
         await axios.post(
-        "/progress/checklist/result/batch", // /api 안 쓰면 "/progress/checklist/result/batch"
+        "/api/progress/checklist/result/batch", // /api 안 쓰면 "/progress/checklist/result/batch"
         { machine_id: machineId, items },
         { headers: { "Content-Type": "application/json" } }
         );

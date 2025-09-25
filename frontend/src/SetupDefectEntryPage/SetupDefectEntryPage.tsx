@@ -30,7 +30,7 @@ const API_BASE = (() => {
     typeof (process as any).env.REACT_APP_API_BASE === "string"
       ? ((process as any).env.REACT_APP_API_BASE as string)
       : undefined;
-  const raw = v1 ?? v2 ?? "";
+  const raw = v1 ?? v2 ?? "/api";
   return raw.endsWith("/") ? raw.slice(0, -1) : raw;
 })();
 
