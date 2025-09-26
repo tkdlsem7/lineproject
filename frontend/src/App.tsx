@@ -22,6 +22,7 @@ import BoardNewPage from "./Board/BoardNewPage";
 import BoardEditPage from "./Board/BoardEditPage";
 import BoardDetailPage from "./Board/BoardDetailPage";
 
+
 // ✅ 토큰만 확인하는 최소 가드
 const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const token = localStorage.getItem("access_token");

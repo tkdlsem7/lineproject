@@ -10,6 +10,7 @@ from decimal import Decimal
 from sqlalchemy import Column, Integer, String, Numeric, Date, Text, func, DateTime, text
 from ..db.database import Base  # ✅ 공용 Base
 
+
 class EquipProgress(Base):
     """
     equip_progress
