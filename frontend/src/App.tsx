@@ -22,6 +22,8 @@ import BoardNewPage from "./Board/BoardNewPage";
 import BoardEditPage from "./Board/BoardEditPage";
 import BoardDetailPage from "./Board/BoardDetailPage";
 
+import LogTableBrowser from "./logtable/LogTableBrowser";
+
 
 // ✅ 토큰만 확인하는 최소 가드
 const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -87,6 +89,7 @@ export default function App() {
       {/* 목록/상세: 공개 (읽기 전용) */}
       <Route path="/board" element={<BoardPage />} />
       <Route path="/board/:no" element={<BoardDetailPage />} />
+      <Route path="/logs/table" element={<LogTableBrowser />} />
 
       {/* 글쓰기/수정: 토큰 필요 */}
       <Route

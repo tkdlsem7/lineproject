@@ -39,6 +39,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
   const ROUTE_TROUBLESHOOT = '/troubleshoot';
   const ROUTE_ROW = '/SetupDefectEntryPage';
   const ROUTE_BOARD = '/board';
+  const ROUTE_LOG_TABLE = '/logs/table'; // ✅ 추가
 
   // 상단 섹션/탭
   const [activeSection, setActiveSection] = useState<
@@ -318,7 +319,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* 상단 바 */}
       <div className="mb-5 flex items-center justify-between">
         <div className="flex flex-wrap gap-3">
@@ -360,7 +361,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
       {showSubTabs && (
         <div className="mb-6">
           <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 p-1.5">
-            {['Dashboard', 'Option Configuration', 'Log Charts', 'Trouble Shoot', 'Row data', 'Board'].map((tab) => (
+            {['Dashboard', 'Option Configuration', 'Log Charts', 'Trouble Shoot', 'Row data', 'Board' , 'Log Table'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => {
@@ -369,6 +370,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
                   else if (tab === 'Trouble Shoot') navigate(ROUTE_TROUBLESHOOT);
                   else if (tab === 'Row data') navigate(ROUTE_ROW);
                   else if (tab === 'Board') navigate(ROUTE_BOARD);
+                  else if (tab === 'Log Table') navigate(ROUTE_LOG_TABLE); // ✅ 추가
                 }}
                 className={`rounded-full px-4 py-2 text-base ${
                   tab === 'Dashboard' ? 'bg-white text-blue-600 shadow' : 'text-gray-700 hover:bg-white hover:shadow'
@@ -382,7 +384,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
       )}
 
       {/* 본문 */}
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="w-full space-y-6">
         {/* 상단 3칸: 자리 현황 */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
           <CapacityCard title="본사 A동" data={cap?.A} loading={capLoading} />

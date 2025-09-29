@@ -21,6 +21,7 @@ from .troubleshoot.routers import router as troubleshoot_router
 from .setup.routers import router as setup_router
 from .board_post.routers import router as board_post_router
 from .Main_main.routers import router as main_router
+from backend.LogBrowser.routers import router as log_browser_router
 
 from .deps import engine
 
@@ -66,6 +67,7 @@ api.include_router(troubleshoot_router)
 api.include_router(setup_router)
 api.include_router(board_post_router)
 api.include_router(main_router)
+api.include_router(log_browser_router)
 
 @app.get("/health")
 def health():
