@@ -23,6 +23,7 @@ import BoardEditPage from "./Board/BoardEditPage";
 import BoardDetailPage from "./Board/BoardDetailPage";
 
 import LogTableBrowser from "./logtable/LogTableBrowser";
+import LogChartPage from  "./LogChart/LogChartPage"
 
 
 // ✅ 토큰만 확인하는 최소 가드
@@ -90,6 +91,7 @@ export default function App() {
       <Route path="/board" element={<BoardPage />} />
       <Route path="/board/:no" element={<BoardDetailPage />} />
       <Route path="/logs/table" element={<LogTableBrowser />} />
+      <Route path="/log/charts" element={<LogChartPage />} />
 
       {/* 글쓰기/수정: 토큰 필요 */}
       <Route

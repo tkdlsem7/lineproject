@@ -40,6 +40,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
   const ROUTE_ROW = '/SetupDefectEntryPage';
   const ROUTE_BOARD = '/board';
   const ROUTE_LOG_TABLE = '/logs/table'; // ✅ 추가
+  const ROUTE_LOG_CHART = '/log/charts';
 
   // 상단 섹션/탭
   const [activeSection, setActiveSection] = useState<
@@ -367,6 +368,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
                 onClick={() => {
                   if (tab === 'Dashboard') navigate(ROUTE_DASHBOARD);
                   else if (tab === 'Option Configuration') navigate(ROUTE_OPTIONS);
+                  else if (tab === 'Log Charts') navigate(ROUTE_LOG_CHART);
                   else if (tab === 'Trouble Shoot') navigate(ROUTE_TROUBLESHOOT);
                   else if (tab === 'Row data') navigate(ROUTE_ROW);
                   else if (tab === 'Board') navigate(ROUTE_BOARD);
