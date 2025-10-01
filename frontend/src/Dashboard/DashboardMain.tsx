@@ -1,6 +1,8 @@
+// src/Dashboard/DashboardMain.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ABuildingView from "./ABuildingView";
-import IBuildingView from "./IBuildingView"; // ★ I동 뷰
+import IBuildingView from "./IBuildingView";
 import BBuildingView from "./BBuildingView";
 import { fetchSlots, type SlotRow } from "./DashboardHandler";
 
@@ -18,6 +20,8 @@ function useDebounced<T>(v: T, d = 200): T {
 }
 
 export default function DashboardMain() {
+  const navigate = useNavigate(); // ← 뒤로가기용
+
   const [site] = useState<string>(() => localStorage.getItem(LS_SITE) ?? "본사");
   const [building, setBuilding] = useState<"A" | "B" | "I">(
     () => (localStorage.getItem(LS_BUILDING) as any) ?? "A"
@@ -57,7 +61,7 @@ export default function DashboardMain() {
   }, [load]);
 
   useEffect(() => {
-    const tick = setInterval(() => setCountdown(ms => (ms > 1000 ? ms - 1000 : 0)), 1000);
+    const tick = setInterval(() => setCountdown((ms) => (ms > 1000 ? ms - 1000 : 0)), 1000);
     const auto = setInterval(() => void load(), AUTO_REFRESH_MS);
     return () => {
       clearInterval(tick);
@@ -68,20 +72,20 @@ export default function DashboardMain() {
   useEffect(() => {
     const q = debouncedQuery.trim().toLowerCase();
     if (!q) return setHighlightedSlot(null);
-    const found = rows.filter(r => (r.machine_id ?? "").toLowerCase().includes(q));
+    const found = rows.filter((r) => (r.machine_id ?? "").toLowerCase().includes(q));
     setHighlightedSlot(found.length ? found[0].slot_code : null);
   }, [debouncedQuery, rows]);
 
   const onSearchClick = () => {
     const q = query.trim().toLowerCase();
     if (!q) return setHighlightedSlot(null);
-    const found = rows.filter(r => (r.machine_id ?? "").toLowerCase().includes(q));
+    const found = rows.filter((r) => (r.machine_id ?? "").toLowerCase().includes(q));
     setHighlightedSlot(found.length ? found[0].slot_code : null);
   };
 
   const equipMap = useMemo(() => {
     const m = new Map<string, SlotRow>();
-    rows.forEach(r => m.set(r.slot_code.toUpperCase(), r));
+    rows.forEach((r) => m.set(r.slot_code.toUpperCase(), r));
     return m;
   }, [rows]);
 
@@ -90,7 +94,13 @@ export default function DashboardMain() {
       {/* 헤더 */}
       <header className="sticky top-0 z-20 bg-white border-b shadow-sm">
         <div className="w-full max-w-none px-6 2xl:px-10 py-3 flex items-center gap-3">
-          <div className="text-5xl font-extrabold tracking-tight text-orange-600">SEMICS</div>
+          <button
+            onClick={() => navigate(-1)} // ← SEMICS 클릭 시 뒤로가기
+            className="text-5xl font-extrabold tracking-tight text-orange-600 hover:opacity-80 focus:outline-none"
+            title="이전 페이지로 이동"
+          >
+            SEMICS
+          </button>
 
           {/* 검색 */}
           <div className="flex-1 flex gap-2">
@@ -117,8 +127,8 @@ export default function DashboardMain() {
               새로고침
             </button>
             <div className="text-xs text-slate-600">
-              마지막 동기화: {lastSyncAt ? lastSyncAt.toLocaleTimeString() : "-"} ·{" "}
-              자동 새로고침까지 {Math.ceil(countdown / 1000)}s
+              마지막 동기화: {lastSyncAt ? lastSyncAt.toLocaleTimeString() : "-"} · 자동 새로고침까지{" "}
+              {Math.ceil(countdown / 1000)}s
             </div>
           </div>
         </div>
@@ -178,25 +188,12 @@ export default function DashboardMain() {
               </section>
             </div>
           ) : building === "A" ? (
-            <ABuildingView
-              equipMap={equipMap}
-              highlightedSlot={highlightedSlot}
-              onShipped={() => void load()} // 출하 후 새로고침
-            />
+            <ABuildingView equipMap={equipMap} highlightedSlot={highlightedSlot} onShipped={() => void load()} />
           ) : building === "B" ? (
-            <BBuildingView
-              equipMap={equipMap}
-              highlightedSlot={highlightedSlot}
-              onShipped={() => void load()}
-            />  
-          ) : building === "I" ? ( // ★ I동 연결
-            <IBuildingView
-              equipMap={equipMap}
-              highlightedSlot={highlightedSlot}
-              onShipped={() => void load()}
-            />
+            <BBuildingView equipMap={equipMap} highlightedSlot={highlightedSlot} onShipped={() => void load()} />
+          ) : building === "I" ? (
+            <IBuildingView equipMap={equipMap} highlightedSlot={highlightedSlot} onShipped={() => void load()} />
           ) : (
-            // B동 등 나머지
             <div className="rounded-xl border bg-white p-10 text-center text-slate-600">
               <div className="text-xl font-semibold mb-2">{building}동</div>
               <div>이 레이아웃은 추후 A동과 동일한 방식으로 확장됩니다.</div>

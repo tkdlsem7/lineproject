@@ -7,6 +7,7 @@
 // ────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -158,6 +159,8 @@ function fmtRate(n?: number | null) { return typeof n === 'number' && isFinite(n
 
 // ── 페이지
 export default function LogChartPage() {
+  const navigate = useNavigate(); // ← 뒤로가기용
+
   const today = useMemo(() => new Date(), []);
   const y = today.getFullYear();
   const m = String(today.getMonth() + 1).padStart(2, '0');
@@ -171,6 +174,11 @@ export default function LogChartPage() {
   const [flows, setFlows] = useState<MonthlyFlow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const resetFilters = () => { // ← 상단으로 올릴 초기화 핸들러
+    setStartMonth(`${y}-${m}`);
+    setEndMonth(`${y}-${m}`);
+  };
 
   async function loadData() {
     const params = { from_month: startMonth, to_month: endMonth };
@@ -226,24 +234,46 @@ export default function LogChartPage() {
       {/* 헤더 */}
       <div className="mx-auto max-w-[1600px] px-6 pt-6 pb-2">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Log Charts</h1>
-            <p className="mt-1 text-sm text-gray-500">리드/사이클타임 · Step 공수 · 불량 · 입/출하 추이</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 w-full md:w-auto">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500 w-20">From</label>
-              <input type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)}
-                     className="h-10 rounded-lg border border-gray-300 px-3 text-sm" />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500 w-20">To</label>
-              <input type="month" value={endMonth} onChange={(e) => setEndMonth(e.target.value)}
-                     className="h-10 rounded-lg border border-gray-300 px-3 text-sm" />
-            </div>
-            <button onClick={loadData} className="h-10 rounded-lg bg-gray-900 text-white px-4 text-sm hover:bg-gray-800 disabled:opacity-50" disabled={loading}>
-              {loading ? '불러오는 중…' : '데이터 불러오기'}
+          {/* 왼쪽: 뒤로가기 + 타이틀 */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+              title="이전 페이지로 이동"
+            >
+              ← 뒤로가기
             </button>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Log Charts</h1>
+              <p className="mt-1 text-sm text-gray-500">리드/사이클타임 · Step 공수 · 불량 · 입/출하 추이</p>
+            </div>
+          </div>
+
+          {/* 오른쪽: 기간 + 초기화 + 데이터 불러오기 */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-2 w-full md:w-auto">
+            <div className="flex items-center gap-2 md:col-span-2">
+              <label className="text-xs text-gray-500 w-16">From</label>
+              <input type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)}
+                     className="h-10 rounded-lg border border-gray-300 px-3 text-sm w-[160px]" />
+            </div>
+            <div className="flex items-center gap-2 md:col-span-2">
+              <label className="text-xs text-gray-500 w-16">To</label>
+              <input type="month" value={endMonth} onChange={(e) => setEndMonth(e.target.value)}
+                     className="h-10 rounded-lg border border-gray-300 px-3 text-sm w-[160px]" />
+            </div>
+            <div className="flex items-center gap-2 md:col-span-1">
+              <button onClick={resetFilters}
+                      className="h-10 rounded-lg border px-3 text-sm hover:bg-gray-50 w-full">
+                필터 초기화
+              </button>
+            </div>
+            <div className="flex items-center gap-2 md:col-span-1 md:col-start-5">
+              <button onClick={loadData}
+                      className="h-10 rounded-lg bg-gray-900 text-white px-4 text-sm hover:bg-gray-800 disabled:opacity-50 w-full"
+                      disabled={loading}>
+                {loading ? '불러오는 중…' : '데이터 불러오기'}
+              </button>
+            </div>
           </div>
         </div>
         {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
@@ -399,14 +429,7 @@ export default function LogChartPage() {
           </SectionCard>
         </div>
 
-        {/* 푸터 */}
-        <div className="mt-8 flex flex-wrap items-center gap-2 justify-end">
-          <button onClick={()=>{ setStartMonth(`${y}-${m}`); setEndMonth(`${y}-${m}`); }}
-                  className="h-10 rounded-lg border px-3 text-sm hover:bg-gray-50">필터 초기화</button>
-          <button onClick={loadData} className="h-10 rounded-lg bg-gray-900 text-white px-4 text-sm hover:bg-gray-800 disabled:opacity-50" disabled={loading}>
-            {loading ? '불러오는 중…' : '데이터 불러오기'}
-          </button>
-        </div>
+        {/* 푸터: 하단의 '필터 초기화' & '데이터 불러오기'는 제거했습니다. */}
       </div>
     </div>
   );

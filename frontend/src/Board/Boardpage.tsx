@@ -108,9 +108,18 @@ const Boardpage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 상단바: 검색 + 새 글쓰기 */}
+      {/* 상단바: 뒤로가기 + 검색 + 새 글쓰기 */}
       <div className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-4">
+          {/* ← 뒤로가기 버튼 추가 */}
+          <button
+            onClick={() => navigate(-1)}
+            className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-100"
+            title="이전 페이지로 이동"
+          >
+            ← 뒤로가기
+          </button>
+
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -176,7 +185,7 @@ const Boardpage: React.FC = () => {
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
-                          const ok = window.confirm('삭제하시겠습니까?'); // ← 여기만 변경
+                          const ok = window.confirm('삭제하시겠습니까?');
                           if (!ok) return;
 
                           try {

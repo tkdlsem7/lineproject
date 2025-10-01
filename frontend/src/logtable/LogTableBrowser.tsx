@@ -1,6 +1,7 @@
 // src/pages/LogTableBrowser.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 /** CRA/Vite 공용: 환경변수 → 없으면 '/api' */
 const API_BASE: string =
@@ -16,8 +17,11 @@ type TableMeta = {
 type RowsRes = { columns: string[]; rows: Record<string, any>[]; total: number };
 
 const LIMIT = 20;
+const EXPORT_CHUNK_DEFAULT = 200; // 백엔드 limit 제약 대응용
 
 const LogTableBrowser: React.FC = () => {
+  const navigate = useNavigate();
+
   const [tables, setTables] = useState<TableMeta[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [columns, setColumns] = useState<string[]>([]);
@@ -31,6 +35,7 @@ const LogTableBrowser: React.FC = () => {
 
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [loadingRows, setLoadingRows] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 선택된 테이블 메타
@@ -72,7 +77,6 @@ const LogTableBrowser: React.FC = () => {
     const meta = tables.find((t) => t.name === selected);
     setColumns(meta?.columns ?? []);
     setPage(1);
-    // 날짜 필터가 없는 테이블이면 기간 입력 초기화
     if (!meta?.date_fields?.length) {
       setFrom("");
       setTo("");
@@ -111,13 +115,99 @@ const LogTableBrowser: React.FC = () => {
     }
   };
 
-  // 최초 1회 자동 조회
+  // 최초 1회 자동 조회 + 테이블 변경 시
   useEffect(() => {
     if (selected) fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+
+  // CSV 셀 이스케이프
+  const escapeCsv = (val: any) => {
+    if (val === null || val === undefined) return "";
+    const s = String(val);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  // 전체 데이터(필터 반영) CSV로 내보내기 (UTF-8 BOM + CRLF, limit 청크)
+  const exportAllToCsv = async () => {
+    if (!selected) return;
+    try {
+      setExporting(true);
+
+      // 공통 파라미터(필터 반영)
+      const base: any = { table: selected };
+      if (search.trim()) base.q = search.trim();
+      if (hasDateFilter) {
+        if (from) base.date_from = from;
+        if (to) base.date_to = to;
+      }
+
+      // 1) 프로브: total/columns 파악 (limit=1)
+      const probe = await axios.get<RowsRes>(`${API_BASE}/logs/rows`, {
+        params: { ...base, limit: 1, offset: 0 },
+        timeout: 30000,
+      });
+      const allColumns = probe.data.columns;
+      const totalCount = probe.data.total;
+
+      // 2) 청크 반복 수집
+      let chunk = EXPORT_CHUNK_DEFAULT;
+      let fetched = 0;
+      let allRows: Record<string, any>[] = [];
+
+      while (fetched < totalCount) {
+        try {
+          const { data } = await axios.get<RowsRes>(`${API_BASE}/logs/rows`, {
+            params: { ...base, limit: chunk, offset: fetched },
+            timeout: 30000,
+          });
+          allRows = allRows.concat(data.rows);
+          fetched += data.rows.length;
+
+          if (data.rows.length === 0) break; // 안전장치
+        } catch (e: any) {
+          // limit 초과 등으로 422 나오면 chunk를 줄여 재시도
+          if (e?.response?.status === 422 && chunk > 50) {
+            chunk = Math.max(50, Math.floor(chunk / 2));
+            continue; // 같은 offset으로 재시도
+          }
+          throw e; // 다른 오류는 상위로
+        }
+      }
+
+      // 3) CSV 생성 (UTF-8 BOM + CRLF)
+      const EOL = "\r\n";
+      const header = allColumns.map(escapeCsv).join(",");
+      const lines = allRows.map((r) => allColumns.map((c) => escapeCsv(r[c])).join(","));
+      const csvBody = [header, ...lines].join(EOL);
+      const BOM = "\uFEFF";
+      const csv = BOM + csvBody;
+
+      // 4) 다운로드
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, "0");
+      const d = String(today.getDate()).padStart(2, "0");
+      const fileName = `${selected}_${y}${m}${d}.csv`;
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert("엑셀(CSV) 내보내기에 실패했습니다. (limit/인코딩 확인)");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="px-6 py-5">
@@ -128,6 +218,15 @@ const LogTableBrowser: React.FC = () => {
 
       {/* 툴바 */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 flex flex-wrap items-center gap-3">
+        {/* 뒤로가기 */}
+        <button
+          className="px-3 py-2 text-sm rounded-xl border bg-white hover:bg-gray-50"
+          onClick={() => navigate(-1)}
+          disabled={loadingMeta || loadingRows}
+        >
+          ← 뒤로가기
+        </button>
+
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600">테이블</label>
           <select
@@ -196,6 +295,16 @@ const LogTableBrowser: React.FC = () => {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* CSV 다운로드 */}
+          <button
+            className="px-3 py-2 text-sm rounded-xl border bg-white hover:bg-gray-50 disabled:opacity-50"
+            onClick={exportAllToCsv}
+            disabled={loadingMeta || loadingRows || exporting || !selected}
+            title="현재 선택/검색/기간 필터를 반영해 전체 데이터를 CSV로 저장합니다."
+          >
+            {exporting ? "내보내는 중..." : "엑셀(CSV) 다운로드"}
+          </button>
+
           <button
             className="px-3 py-2 text-sm rounded-xl border bg-white hover:bg-gray-50"
             onClick={() => {
@@ -292,17 +401,19 @@ const LogTableBrowser: React.FC = () => {
             >
               ‹
             </button>
-            <span className="text-sm text-gray-700">{Math.min(page, Math.max(1, Math.ceil(total / LIMIT)))} / {Math.max(1, Math.ceil(total / LIMIT))}</span>
+            <span className="text-sm text-gray-700">
+              {Math.min(page, Math.max(1, totalPages))} / {totalPages}
+            </span>
             <button
               className="px-2 py-1 text-sm rounded border bg-white text-gray-600 disabled:opacity-40"
               onClick={() => {
-                const max = Math.max(1, Math.ceil(total / LIMIT));
+                const max = totalPages;
                 if (page < max) {
                   setPage(page + 1);
                   fetchRows();
                 }
               }}
-              disabled={page >= Math.max(1, Math.ceil(total / LIMIT)) || loadingMeta || loadingRows}
+              disabled={page >= totalPages || loadingMeta || loadingRows}
             >
               ›
             </button>

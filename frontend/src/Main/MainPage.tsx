@@ -1,7 +1,9 @@
 // src/Main/MainPage.tsx
-// - 상단 3칸: 본사 A/B/I동 자리 현황 (A: a~f, B: g/h, I: i 시작) 60/32/8
-// - 가운데 2칸: 게시판 공지사항 / 변경점 (최신 6개)
-// - 하단 3칸: 오늘 입고 / 오늘 출하 / 3일 이내 출하
+// - 상단 3칸: 본사 A/B/I동 자리 현황
+// - 가운데 2칸: 게시판 공지사항 / 변경점
+// - 하단 3칸: 오늘 입고 / 오늘 출하 / 3일 이내 출하 (숫자 카드)
+// - 그 아래 표 3개: 오늘 입고 목록 / 오늘 출하 목록 / 3일 이내 출하 목록
+//   (각 표 컬럼: 장비 호기(machine_id), 담당자(manager), slot(slot_code))
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -29,17 +31,23 @@ type SummaryRes = { notices: BriefPost[]; changes: BriefPost[] };
 type ShipSummary = { today: number; within3: number };
 type ReceiptSummary = { today: number };
 
-/* ---------- 컴포넌트 ---------- */
+/* 표(3개)에서 쓰는 간단 행 */
+type RowBrief = {
+  machine_id?: string | null;
+  manager?: string | null;
+  slot_code?: string | null;
+};
+
 const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
   const navigate = useNavigate();
 
-  // 라우팅 상수
+  // 탭 라우팅
   const ROUTE_DASHBOARD = '/dashboard';
   const ROUTE_OPTIONS = '/options';
   const ROUTE_TROUBLESHOOT = '/troubleshoot';
   const ROUTE_ROW = '/SetupDefectEntryPage';
   const ROUTE_BOARD = '/board';
-  const ROUTE_LOG_TABLE = '/logs/table'; // ✅ 추가
+  const ROUTE_LOG_TABLE = '/logs/table';
   const ROUTE_LOG_CHART = '/log/charts';
 
   // 상단 섹션/탭
@@ -48,7 +56,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
   >('시스템 생산실');
   const [showSubTabs, setShowSubTabs] = useState(true);
 
-  // 로그인 이름: localStorage > prop > 기본값
+  // 로그인 이름
   const storedName = (typeof window !== 'undefined' ? localStorage.getItem('user_name') : '')?.trim();
   const nameToShow = storedName && storedName.length > 0 ? storedName : userName?.trim() || '사용자';
 
@@ -72,7 +80,18 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
   const [rcpLoading, setRcpLoading] = useState(true);
   const [rcpErr, setRcpErr] = useState<string | null>(null);
 
-  // 자리 현황 로드
+  /* ----- 상태: 표 3개 ----- */
+  const [recTodayRows, setRecTodayRows] = useState<RowBrief[]>([]);
+  const [shipTodayRows, setShipTodayRows] = useState<RowBrief[]>([]);
+  const [ship3Rows, setShip3Rows] = useState<RowBrief[]>([]);
+  const [rowsLoading, setRowsLoading] = useState({ rec: true, ship: true, ship3: true });
+  const [rowsErr, setRowsErr] = useState<{ rec: string | null; ship: string | null; ship3: string | null }>({
+    rec: null,
+    ship: null,
+    ship3: null,
+  });
+
+  /* ----- 데이터 로딩: 자리 현황 ----- */
   useEffect(() => {
     let alive = true;
     const controller = new AbortController();
@@ -82,7 +101,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
         setCapLoading(true);
         setCapErr(null);
         const { data } = await axios.get<CapacityRes>(`${API_BASE}/main/capacity`, {
-          params: { site: '본사' }, // 필요 없으면 제거 가능
+          params: { site: '본사' },
           timeout: 8000,
           signal: controller.signal,
         });
@@ -106,7 +125,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
     };
   }, []);
 
-  // 게시판 요약 로드
+  /* ----- 데이터 로딩: 게시판 요약 ----- */
   useEffect(() => {
     let alive = true;
     const controller = new AbortController();
@@ -141,7 +160,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
     };
   }, []);
 
-  // 출하 요약 로드 (오늘 / 3일 이내)
+  /* ----- 데이터 로딩: 출하/입고 요약 ----- */
   useEffect(() => {
     let alive = true;
     const controller = new AbortController();
@@ -151,7 +170,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
         setShipLoading(true);
         setShipErr(null);
         const { data } = await axios.get<ShipSummary>(`${API_BASE}/main/ship-summary`, {
-          params: { site: '본사' }, // 필요 없으면 제거
+          params: { site: '본사' },
           timeout: 8000,
           signal: controller.signal,
         });
@@ -175,7 +194,6 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
     };
   }, []);
 
-  // 입고 요약 로드 (오늘)
   useEffect(() => {
     let alive = true;
     const controller = new AbortController();
@@ -185,7 +203,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
         setRcpLoading(true);
         setRcpErr(null);
         const { data } = await axios.get<ReceiptSummary>(`${API_BASE}/main/receipt-summary`, {
-          params: { site: '본사' }, // 필요 없으면 제거
+          params: { site: '본사' },
           timeout: 8000,
           signal: controller.signal,
         });
@@ -209,6 +227,95 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
     };
   }, []);
 
+  /* ----- 데이터 로딩: 표 3개 ----- */
+
+  // 오늘 입고 목록 (equipment_receipt_log 기준)
+  useEffect(() => {
+    let alive = true;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        setRowsLoading((s) => ({ ...s, rec: true }));
+        setRowsErr((s) => ({ ...s, rec: null }));
+        const { data } = await axios.get<RowBrief[]>(`${API_BASE}/main/receipt-today-rows`, {
+          params: { site: '본사', limit: 10 },
+          timeout: 8000,
+          signal: controller.signal,
+        });
+        if (!alive) return;
+        setRecTodayRows(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        const canceled =
+          e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.message === 'canceled';
+        if (!canceled) setRowsErr((s) => ({ ...s, rec: '오늘 입고 목록을 불러오지 못했습니다.' }));
+      } finally {
+        if (alive) setRowsLoading((s) => ({ ...s, rec: false }));
+      }
+    })();
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, []);
+
+  // 오늘 출하 목록 (equip_progress.shipping_date=오늘)
+  useEffect(() => {
+    let alive = true;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        setRowsLoading((s) => ({ ...s, ship: true }));
+        setRowsErr((s) => ({ ...s, ship: null }));
+        const { data } = await axios.get<RowBrief[]>(`${API_BASE}/main/ship-today-rows`, {
+          params: { site: '본사', limit: 10 },
+          timeout: 8000,
+          signal: controller.signal,
+        });
+        if (!alive) return;
+        setShipTodayRows(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        const canceled =
+          e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.message === 'canceled';
+        if (!canceled) setRowsErr((s) => ({ ...s, ship: '오늘 출하 목록을 불러오지 못했습니다.' }));
+      } finally {
+        if (alive) setRowsLoading((s) => ({ ...s, ship: false }));
+      }
+    })();
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, []);
+
+  // 3일 이내 출하 목록 (equip_progress.shipping_date ∈ [오늘-2, 오늘])
+  useEffect(() => {
+    let alive = true;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        setRowsLoading((s) => ({ ...s, ship3: true }));
+        setRowsErr((s) => ({ ...s, ship3: null }));
+        const { data } = await axios.get<RowBrief[]>(`${API_BASE}/main/ship-within3-rows`, {
+          params: { site: '본사', limit: 10 },
+          timeout: 8000,
+          signal: controller.signal,
+        });
+        if (!alive) return;
+        setShip3Rows(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        const canceled =
+          e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.message === 'canceled';
+        if (!canceled) setRowsErr((s) => ({ ...s, ship3: '3일 이내 출하 목록을 불러오지 못했습니다.' }));
+      } finally {
+        if (alive) setRowsLoading((s) => ({ ...s, ship3: false }));
+      }
+    })();
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, []);
+
   /** 섹션 버튼 클릭 */
   const handleSectionClick = (label: typeof activeSection) => {
     setActiveSection(label);
@@ -225,16 +332,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
     }
   };
 
-  const fmtDate = (iso: string) => {
-    const d = new Date(iso);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  };
-
-  /* ----- 소 UI: 카드들 ----- */
-
+  /* ----- 소 UI: 카드 컴포넌트 ----- */
   const CapacityCard: React.FC<{ title: string; data?: Building; loading?: boolean }> = ({
     title,
     data,
@@ -290,7 +388,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-gray-900">{p.title}</div>
                     <div className="mt-0.5 text-xs text-gray-500">
-                      작성자 {p.author_name} · {fmtDate(p.created_at)}
+                      작성자 {p.author_name} · {new Date(p.created_at).toLocaleDateString()}
                     </div>
                   </div>
                   <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] text-gray-600">
@@ -319,6 +417,59 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
     </div>
   );
 
+  const SimpleRowsTable: React.FC<{
+    title: string;
+    rows: RowBrief[];
+    loading?: boolean;
+    error?: string | null;
+  }> = ({ title, rows, loading, error }) => (
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+        <h3 className="text-base font-semibold text-gray-800">{title}</h3>
+        <span className="text-xs text-gray-400">{rows.length}건</span>
+      </div>
+      {error && <div className="px-5 py-2 text-sm text-red-600">{error}</div>}
+      <div className="overflow-x-auto">
+        <table className="min-w-full table-fixed">
+          <thead className="bg-gray-50 text-sm text-gray-600">
+            <tr>
+              <th className="w-48 px-4 py-3 text-left">장비 호기</th>
+              <th className="w-40 px-4 py-3 text-left">담당자</th>
+              <th className="w-32 px-4 py-3 text-left">Slot</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={i} className="border-t">
+                  {Array.from({ length: 3 }).map((__, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
+                  데이터가 없습니다.
+                </td>
+              </tr>
+            ) : (
+              rows.map((r, idx) => (
+                <tr key={idx} className="border-t hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-900">{r.machine_id ?? ''}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{r.manager ?? ''}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{(r.slot_code ?? '').toUpperCase()}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* 상단 바 */}
@@ -327,7 +478,10 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
           {(['시스템 생산실', '통합 생산실', '생산 물류팀', '파트 생산팀'] as const).map((label) => (
             <button
               key={label}
-              onClick={() => handleSectionClick(label)}
+              onClick={() => {
+                setActiveSection(label);
+                setShowSubTabs(label === '시스템 생산실');
+              }}
               className={`rounded-full px-4 py-2 text-base font-medium transition ${
                 activeSection === label
                   ? 'bg-blue-100 text-blue-700'
@@ -354,7 +508,6 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
           >
             로그아웃
           </button>
-          <span className="ml-1 text-sm text-gray-500">마지막 동기화: 2025. 9. 10. 오후 3:28:21</span>
         </div>
       </div>
 
@@ -362,25 +515,29 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
       {showSubTabs && (
         <div className="mb-6">
           <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 p-1.5">
-            {['Dashboard', 'Option Configuration', 'Log Charts', 'Trouble Shoot', 'Row data', 'Board' , 'Log Table'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => {
-                  if (tab === 'Dashboard') navigate(ROUTE_DASHBOARD);
-                  else if (tab === 'Option Configuration') navigate(ROUTE_OPTIONS);
-                  else if (tab === 'Log Charts') navigate(ROUTE_LOG_CHART);
-                  else if (tab === 'Trouble Shoot') navigate(ROUTE_TROUBLESHOOT);
-                  else if (tab === 'Row data') navigate(ROUTE_ROW);
-                  else if (tab === 'Board') navigate(ROUTE_BOARD);
-                  else if (tab === 'Log Table') navigate(ROUTE_LOG_TABLE); // ✅ 추가
-                }}
-                className={`rounded-full px-4 py-2 text-base ${
-                  tab === 'Dashboard' ? 'bg-white text-blue-600 shadow' : 'text-gray-700 hover:bg-white hover:shadow'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+            {['Dashboard', 'Option Configuration', 'Log Charts', 'Trouble Shoot', 'Row data', 'Board', 'Log Table'].map(
+              (tab) => (
+                <button
+                  key={tab}
+                  onClick={() => {
+                    if (tab === 'Dashboard') navigate(ROUTE_DASHBOARD);
+                    else if (tab === 'Option Configuration') navigate(ROUTE_OPTIONS);
+                    else if (tab === 'Log Charts') navigate(ROUTE_LOG_CHART);
+                    else if (tab === 'Trouble Shoot') navigate(ROUTE_TROUBLESHOOT);
+                    else if (tab === 'Row data') navigate(ROUTE_ROW);
+                    else if (tab === 'Board') navigate(ROUTE_BOARD);
+                    else if (tab === 'Log Table') navigate(ROUTE_LOG_TABLE);
+                  }}
+                  className={`rounded-full px-4 py-2 text-base ${
+                    tab === 'Dashboard'
+                      ? 'bg-white text-blue-600 shadow'
+                      : 'text-gray-700 hover:bg-white hover:shadow'
+                  }`}
+                >
+                  {tab}
+                </button>
+              )
+            )}
           </div>
         </div>
       )}
@@ -402,7 +559,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
         </div>
         {brdErr && <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{brdErr}</div>}
 
-        {/* 하단 3칸: 입고/출하 요약 */}
+        {/* 하단 3칸: 입/출하 요약 숫자 카드 */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <StatCard label="오늘 입고" value={rcp?.today} loading={rcpLoading} />
           <StatCard label="오늘 출하" value={ship?.today} loading={shipLoading} />
@@ -410,6 +567,28 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
         </div>
         {rcpErr && <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{rcpErr}</div>}
         {shipErr && <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{shipErr}</div>}
+
+        {/* ✅ 표 3개 */}
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <SimpleRowsTable
+            title="오늘 입고 목록"
+            rows={recTodayRows}
+            loading={rowsLoading.rec}
+            error={rowsErr.rec}
+          />
+          <SimpleRowsTable
+            title="오늘 출하 목록"
+            rows={shipTodayRows}
+            loading={rowsLoading.ship}
+            error={rowsErr.ship}
+          />
+          <SimpleRowsTable
+            title="3일 이내 출하 목록"
+            rows={ship3Rows}
+            loading={rowsLoading.ship3}
+            error={rowsErr.ship3}
+          />
+        </div>
       </div>
     </div>
   );
