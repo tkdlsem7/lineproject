@@ -1,0 +1,15 @@
+@"
+node_modules
+build
+dist
+.cache
+.next
+.git
+.gitignore
+.vscode
+*.log
+.DS_Store
+Dockerfile
+Dockerfile.*
+.dockerignore
+"@ | Set-Content -Encoding UTF8 .\frontend\.dockerignore

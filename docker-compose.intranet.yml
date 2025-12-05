@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: lineproject-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mes_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    image: lineproject-backend:latest   # 예전에 backend.tar에서 load 했던 이미지 이름
+    container_name: lineproject-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+    ports:
+      - "8000:8000"
+    # 필요하면 코드 볼륨도 연결 (선택)
+    # volumes:
+    #   - ./backend:/app
+
+  frontend:
+    image: lineproject-frontend:latest  # 방금 노트북에서 빌드해서 load 한 이미지
+    container_name: lineproject-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

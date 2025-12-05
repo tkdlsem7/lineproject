@@ -1,0 +1,62 @@
+services:
+  # ──────────────────────────
+  # 1) PostgreSQL
+  # ──────────────────────────
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mes_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ──────────────────────────
+  # 2) FastAPI backend
+  # ──────────────────────────
+  backend:
+    build:
+      context: ./backend
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend            # ← 백엔드 루트를 /app으로 바인드
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app         # ← /app을 파이썬 모듈 경로로
+    command: uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+
+  # ──────────────────────────
+  # 3) React frontend (CRA dev server)
+  # ──────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+    env_file: .env
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    working_dir: /app
+    environment:
+      - PORT=3000               # CRA는 HOST/PORT 환경변수 사용
+      - HOST=0.0.0.0
+      - CHOKIDAR_USEPOLLING=true
+      - REACT_APP_API_BASE=http://backend:8000  # 프록시 없이 백엔드 직접 호출
+    command: sh -lc "npm ci && npm start"
+
+volumes:
+  pgdata: {}

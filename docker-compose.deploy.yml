@@ -1,0 +1,71 @@
+# docker-compose.deploy.yml  (root)
+# 운영용: 소스 볼륨/--reload/npm start 없음, 이미지만 사용
+# 프런트는 정적이미지(보통 nginx:80), 백엔드는 uvicorn 멀티워커
+
+name: lineproject-deploy
+
+services:
+  # 1) PostgreSQL (내부 전용)
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mes_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set_in_.env}
+    # 운영에선 외부 포트 미노출 권장. 필요시만 로컬바인딩 사용:
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # 2) FastAPI Backend (uvicorn, multi workers)
+  backend:
+    image: ${BACKEND_IMAGE:-lineapp-backend}:${BACKEND_TAG:?set_in_.env}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # .env에 DATABASE_URL 없으면 아래 기본값 사용
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set_in_.env}@db:5432/${POSTGRES_DB:-mes_dev}}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    command: >
+      sh -lc "exec uvicorn backend.main:app
+              --host 0.0.0.0 --port 8000
+              --workers ${UVICORN_WORKERS:-2}
+              --proxy-headers"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # 3) Frontend (정적 배포 이미지, 보통 nginx:80)
+  #    * 프록시를 안 쓴다면, 프론트 빌드 시 REACT_APP_API_BASE를
+  #      http://<SERVER_IP>:${BACKEND_PORT:-8000} 로 굳혀서 이미지 빌드해 두세요.
+  #    * 프록시 nginx 이미지를 쓰는 구성이라면, 이미지 내 nginx.conf에서
+  #      /api → http://backend:8000 로 프록시하도록 설정.
+  frontend:
+    image: ${FRONTEND_IMAGE:-lineapp-frontend}:${FRONTEND_TAG:?set_in_.env}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # 호스트 3000 → 컨테이너 80(nginx) 노출. 이미지가 3000에서 리슨하면 "3000:3000"로 바꾸세요.
+      - "${FRONT_PORT:-3000}:80"
+
+volumes:
+  pgdata: {}

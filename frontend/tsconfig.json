@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    // ES2015 이상 문법 지원
+    "target": "es2015",
+
+    // Iterable downlevel 변환 활성화 (ES5 타깃일 때도 for…of 지원)
+    "downlevelIteration": true,
+
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src"
+  ]
+}
