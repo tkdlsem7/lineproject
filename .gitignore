@@ -1,0 +1,15 @@
+
+# docker image tarballs
+*.tar
+*.tar.gz
+
+
+# docker image tarballs
+*.tar
+*.tar.gz
+
+
+# docker image tarballs
+*.tar
+*.tar.gz
+
