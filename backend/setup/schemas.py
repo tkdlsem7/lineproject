@@ -23,6 +23,13 @@ class Step(_Base):
     quality_score: Optional[int] = Field(default=None, ge=0, le=100)
     ts_hours: Optional[float] = Field(default=None, ge=0)
 
+    # ★ 새로 추가된 불량 관련 필드들
+    hw_sw: Optional[str] = None             # H/W, S/W
+    defect: Optional[str] = None           # 불량
+    defect_type: Optional[str] = None      # 불량유형
+    defect_group: Optional[str] = None     # 불량구분
+    defect_location: Optional[str] = None  # 불량위치
+
 class SaveRequest(_Base):
     sheetId: Optional[int] = None
     meta: Meta
@@ -46,4 +53,12 @@ class RowRead(_Base):
     defect_detail: Optional[str]
     quality_score: Optional[int]
     ts_hours: Optional[float]
+
+    # ★ 새 컬럼들 조회에도 포함
+    hw_sw: Optional[str]
+    defect: Optional[str]
+    defect_type: Optional[str]
+    defect_group: Optional[str]
+    defect_location: Optional[str]
+
     created_at: datetime

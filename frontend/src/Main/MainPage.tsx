@@ -423,7 +423,7 @@ const MainPage: React.FC<{ userName?: string }> = () => {
                 "Option Configuration",
                 "Log Charts",
                 "Trouble Shoot",
-                "Row data",
+                "Raw data",
                 "Board",
                 "Log Table",
               ].map((tab) => (
@@ -436,7 +436,7 @@ const MainPage: React.FC<{ userName?: string }> = () => {
                     else if (tab === "Log Charts") navigate(ROUTE_LOG_CHART);
                     else if (tab === "Trouble Shoot")
                       navigate(ROUTE_TROUBLESHOOT);
-                    else if (tab === "Row data") navigate(ROUTE_ROW);
+                    else if (tab === "Raw data") navigate(ROUTE_ROW);
                     else if (tab === "Board") navigate(ROUTE_BOARD);
                     else if (tab === "Log Table") navigate(ROUTE_LOG_TABLE);
                   }}
