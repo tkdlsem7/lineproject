@@ -58,6 +58,7 @@ const MainPage: React.FC<{ userName?: string }> = () => {
   const ROUTE_BOARD = "/board";
   const ROUTE_LOG_TABLE = "/logs/table";
   const ROUTE_LOG_CHART = "/log/charts";
+  const ROUTE_MACHINE_MOVING = "/machine-move";
 
   // 로그아웃
   const handleLogout = () => {
@@ -423,9 +424,10 @@ const MainPage: React.FC<{ userName?: string }> = () => {
                 "Option Configuration",
                 "Log Charts",
                 "Trouble Shoot",
-                "Raw data",
+                "Row data",
                 "Board",
                 "Log Table",
+                "Machine Moving",
               ].map((tab) => (
                 <button
                   key={tab}
@@ -436,9 +438,10 @@ const MainPage: React.FC<{ userName?: string }> = () => {
                     else if (tab === "Log Charts") navigate(ROUTE_LOG_CHART);
                     else if (tab === "Trouble Shoot")
                       navigate(ROUTE_TROUBLESHOOT);
-                    else if (tab === "Raw data") navigate(ROUTE_ROW);
+                    else if (tab === "Row data") navigate(ROUTE_ROW);
                     else if (tab === "Board") navigate(ROUTE_BOARD);
                     else if (tab === "Log Table") navigate(ROUTE_LOG_TABLE);
+                    else if (tab === "Machine Moving") navigate(ROUTE_MACHINE_MOVING);
                   }}
                   className={`rounded-full px-4 py-2 text-base transition ${
                     tab === "Dashboard"
@@ -458,7 +461,7 @@ const MainPage: React.FC<{ userName?: string }> = () => {
           {/* 공지/변경점 */}
           <div className="grid auto-rows-fr grid-cols-1 gap-6 xl:grid-cols-2">
             <BoardCard title="공지사항" items={notices} loading={brdLoading} />
-            <BoardCard title="변경점" items={changes} loading={brdLoading} />
+            <BoardCard title="적용사항" items={changes} loading={brdLoading} />
           </div>
           {brdErr && (
             <div className="rounded-lg bg-red-50 px-4 py-2 text-base text-red-700">

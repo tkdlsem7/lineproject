@@ -20,7 +20,7 @@ SerialStr = Annotated[str, StringConstraints(strip_whitespace=True, max_length=5
 
 class EquipmentSaveRequest(BaseModel):
     machine_id: MachineId
-    shipping_date: date
+    shipping_date: Optional[date] = None
     manager: Optional[str] = Field(default="")
     customer: Optional[str] = Field(default="")
     slot_code: SlotCode

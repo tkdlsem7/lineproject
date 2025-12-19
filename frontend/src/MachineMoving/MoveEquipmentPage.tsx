@@ -15,7 +15,7 @@ type EquipmentRow = {
 const API_BASE = "http://192.168.101.1:8000/api";
 
 // 요구: 사이트는 3개 고정
-const SITES = ["본사", "진우리", "부항리"] as const;
+const SITES = ["본사", "진우리", "라인대기"] as const;
 
 /* 토큰 → Authorization 헤더 (있는 경우만) */
 const authHeaders = (): Record<string, string> => {

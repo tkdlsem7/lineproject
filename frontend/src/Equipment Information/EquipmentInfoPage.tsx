@@ -372,7 +372,6 @@ const EquipmentInfoPage: React.FC = () => {
   const handleSave = async () => {
     try {
       if (!machineId.trim()) return alert("Machine ID를 입력해주세요.");
-      if (!shippingDate) return alert("출하일을 선택해주세요.");
       if (!slot.trim()) return alert("슬롯 정보가 없습니다. 대시보드에서 다시 시도해주세요.");
 
       setSaving(true);
@@ -384,7 +383,7 @@ const EquipmentInfoPage: React.FC = () => {
 
       const body = {
         machine_id: machineId.trim(),
-        shipping_date: shippingDate,
+        shipping_date: shippingDate ? shippingDate : null, // ✅ 빈칸 허용
         manager: manager || "",
         customer: customer || "",
         slot_code: slot,

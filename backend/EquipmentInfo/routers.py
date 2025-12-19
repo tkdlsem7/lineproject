@@ -195,7 +195,7 @@ def save_equipment_info(payload: EquipmentSaveRequest, db: Session = Depends(get
                     EquipmentReceiptLog(
                         machine_no=machine_id,
                         manager=payload.manager or "",
-                        receive_date=payload.shipping_date or _date.today(),
+                        receive_date=_date.today(),
                         site=site or "",
                         slot=slot_code,
                     )
@@ -247,7 +247,7 @@ def save_equipment_info(payload: EquipmentSaveRequest, db: Session = Depends(get
             EquipmentReceiptLog(
                 machine_no=machine_id,
                 manager=payload.manager or "",
-                receive_date=payload.shipping_date or _date.today(),
+                receive_date=_date.today(),
                 site=site or "",
                 slot=slot_code,
             )
