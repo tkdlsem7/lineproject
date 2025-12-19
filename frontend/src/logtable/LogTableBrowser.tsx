@@ -76,237 +76,166 @@ const SUMMARY_HEADERS = [
   "입고 품질 점수(단위 : 점)",
   "불량 건수",
   "T.S 소요 시간\n(단위 : 분)",
-  "Common",
-  "Stage",
-  "Loader",
-  "STAGE(Advanced)",
-  "Cold Test",
-  "HW",
-  "Option&ETC",
-  "개조",
-  "Packing&Delivery",
   "적용",
   "비고",
   "담당자",
-  // 🔽 여기 두 줄 새로 추가 (복사본)
-  "호기",
-  "세팅총소요시간(단위 : 시간)",
-  // 새 리드타임 3개
+
+  // Step 카운트
+  "초기 구동",
+  "Wafer Transfer",
+  "Wafer Chuck",
+  "Aligner",
+  "Pressure Check",
+  "Ionizer",
+  "Robot",
+  "Vacuum",
+  "Leak Check",
+  "Dry Pump",
+  "Door",
+  "Scan",
+  "Z축",
+  "Calibration",
+  "Temp",
+  "Servo",
+  "Option",
+  "Final Check",
+  "Packing&Delivery",
+
+  // 리드타임 3개(요청하신 3줄)
   SUMMARY_LT_RECEIPT_SHIP,
   SUMMARY_LT_RECEIPT_COMPLETE,
   SUMMARY_LT_RECEIPT_START,
 ];
 
-// Step 이름 ↔ 요약 시트 컬럼 매핑 (각 Step의 행 개수 카운트)
-const SUMMARY_STEP_KEYS: { header: string; match: string }[] = [
-  { header: "Common", match: "Common" },
-  { header: "Stage", match: "Stage" },
-  { header: "Loader", match: "Loader" },
-  { header: "STAGE(Advanced)", match: "STAGE(Advanced)" },
-  { header: "Cold Test", match: "Cold Test" },
-  { header: "HW", match: "HW" },
-  { header: "Option&ETC", match: "Option&ETC" },
-  { header: "개조", match: "개조" },
+// Step 매핑 키 (차분보고서취합용)
+const SUMMARY_STEP_KEYS = [
+  { header: "초기 구동", match: "Initial" },
+  { header: "Wafer Transfer", match: "Wafer Transfer" },
+  { header: "Wafer Chuck", match: "Wafer Chuck" },
+  { header: "Aligner", match: "Aligner" },
+  { header: "Pressure Check", match: "Pressure Check" },
+  { header: "Ionizer", match: "Ionizer" },
+  { header: "Robot", match: "Robot" },
+  { header: "Vacuum", match: "Vacuum" },
+  { header: "Leak Check", match: "Leak Check" },
+  { header: "Dry Pump", match: "Dry Pump" },
+  { header: "Door", match: "Door" },
+  { header: "Scan", match: "Scan" },
+  { header: "Z축", match: "Z axis" },
+  { header: "Calibration", match: "Calibration" },
+  { header: "Temp", match: "Temp" },
+  { header: "Servo", match: "Servo" },
+  { header: "Option", match: "Option" },
+  { header: "Final Check", match: "Final Check" },
   { header: "Packing&Delivery", match: "Packing&Delivery" },
 ];
 
-// 호기 첫 부분 → 모델 매핑
-const MODEL_MAP: Record<string, string> = {
-  F: "FD",
-  C: "SC",
-  "D(e)": "SD(e)",
-  "E(e)": "SE(e)",
-  "H(e)": "SH(e)",
-  "T(e)": "SLT(e)",
-  P: "SP",
-  I: "ST(e)",
-  J: "STP(e)",
-};
-
-const parseDateOnly = (val: any): Date | null => {
-  if (!val) return null;
-  const s = String(val);
+// 날짜 문자열 -> Date 변환(안되면 null)
+const parseDate = (v: any): Date | null => {
+  if (!v) return null;
+  const s = String(v).trim();
   if (!s) return null;
-  const ymd = s.length > 10 ? s.slice(0, 10) : s; // "YYYY-MM-DD..."
-  const [y, m, d] = ymd.split("-");
-  if (!y || !m || !d) return null;
-  const dt = new Date(Number(y), Number(m) - 1, Number(d));
-  return isNaN(dt.getTime()) ? null : dt;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
 };
 
-// 날짜/시간 문자열 아무거나 → Date
-const parseDateTime = (val: any): Date | null => {
-  if (!val) return null;
-  const s = String(val);
-  if (!s) return null;
-  const dt = new Date(s);
-  if (!isNaN(dt.getTime())) return dt;
-  // 안 먹히면 date-only 파서로 한 번 더
-  return parseDateOnly(s);
-};
-
-const diffDays = (start: any, end: any): string => {
-  const s = parseDateOnly(start);
-  const e = parseDateOnly(end);
-  if (!s || !e) return "";
-  const ms = e.getTime() - s.getTime();
-  const days = Math.round(ms / (1000 * 60 * 60 * 24));
-  return String(days);
-};
-
-const diffDaysNumber = (start: Date | null, end: Date | null): number | null => {
-  if (!start || !end) return null;
-  const ms = end.getTime() - start.getTime();
+const diffDays = (a: any, b: any) => {
+  const da = parseDate(a);
+  const db = parseDate(b);
+  if (!da || !db) return "";
+  const ms = db.getTime() - da.getTime();
   return Math.round(ms / (1000 * 60 * 60 * 24));
 };
 
-const calcModel = (machineNo: any): string => {
-  if (!machineNo) return "";
-  const raw = String(machineNo).trim();
-  if (!raw) return "";
-  const first = raw.split("-")[0]?.trim(); // "D(e)-08-01" → "D(e)"
-  if (!first) return "";
-  return MODEL_MAP[first] ?? first.toUpperCase();
-};
+// machine_no -> 모델/차분/호기 파싱 (요청하신 규칙)
+const parseMachineNo = (machineNo: string) => {
+  const parts = machineNo.split("-").map((x) => x.trim());
+  const prefix = parts[0] ?? "";
+  const diff = parts[1] ?? "";
+  const ho = parts.slice(1).join("-");
 
-const calcDiffString = (machineNo: any): string => {
-  if (!machineNo) return "";
-  const raw = String(machineNo).trim();
-  if (!raw) return "";
-  const parts = raw.split("-");
-  if (parts.length < 2) return "";
-  const model = calcModel(raw);
-  const diff = parts[1];
-  if (!model || !diff) return "";
-  return `${model} ${diff}`;
-};
+  const MODEL_MAP: Record<string, string> = {
+    F: "FD",
+    C: "SC",
+    "D(e)": "SD(e)",
+    "E(e)": "SE(e)",
+    "H(e)": "SH(e)",
+    "T(e)": "SLT(e)",
+    P: "SP",
+    I: "ST(e)",
+    J: "STP(e)",
+  };
 
-// 한 행 → Rawdata 형식으로 변환
-const buildRawRow = (
-  row: Record<string, any>,
-  apply: string,
-  note: string,
-  owner: string
-): Record<string, any> => {
-  const machineNo = row["machine_no"] ?? "";
+  const model = MODEL_MAP[prefix] ?? prefix;
+  const chabun = model && diff ? `${model} ${diff}` : diff;
+
   return {
-    모델: calcModel(machineNo),
-    차분: calcDiffString(machineNo),
+    모델: model,
+    차분: chabun,
     호기: machineNo,
-    "S/N": row["sn"] ?? "",
-    "Chiller S/N": row["chiller_sn"] ?? "",
-    세팅시작일: row["setup_start_date"] ?? "",
-    세팅종료일: row["setup_end_date"] ?? "",
-    "리드타임\n(사내 입고 - 출하)": diffDays(
-      row["setup_start_date"],
-      row["setup_end_date"]
-    ),
-    Step: row["step_name"] ?? "",
-    "세팅총소요시간(단위 : 시간)": row["setup_hours"] ?? "",
-    "HW/SW": row["hw_sw"] ?? "",
-    불량: row["defect"] ?? "",
-    불량유형: row["defect_type"] ?? "",
-    "세부 불량": row["defect_detail"] ?? "",
-    품질점수: row["quality_score"] ?? "",
-    "T.S 소요 시간\n(단위 : 분)": row["ts_hours"] ?? "",
-    적용: apply,
-    비고: note,
-    담당자: owner,
-    불량구분: row["defect_group"] ?? "",
-    "불량 위치": row["defect_location"] ?? "",
   };
 };
 
-// ──────────────────────────────────────────
-// 리드타임 계산용 타입 & 헬퍼
-// ──────────────────────────────────────────
-type LeadTimeTriple = {
-  receipt_to_ship_days?: number | null;
-  receipt_to_complete_days?: number | null;
-  receipt_to_start_days?: number | null;
+// setup_sheet_all rows -> Rawdata CSV rows 생성
+const toRawdataRows = (rows: Record<string, any>[]) => {
+  return rows.map((r) => {
+    const machineNo = String(r.machine_no ?? "");
+    const base = parseMachineNo(machineNo);
+
+    const start = r.setting_start_date ?? r.setting_start ?? r.start_date ?? "";
+    const end = r.setting_end_date ?? r.setting_end ?? r.end_date ?? "";
+    const lead = diffDays(start, end);
+
+    return {
+      ...base,
+      "S/N": r.serial_number ?? r.serial_no ?? "",
+      "Chiller S/N": r.chiller_serial_number ?? r.chiller_sn ?? "",
+      세팅시작일: start,
+      세팅종료일: end,
+      "리드타임\n(사내 입고 - 출하)": lead,
+      Step: r.step ?? "",
+      "세팅총소요시간(단위 : 시간)": r.total_hours ?? r.setting_total_hours ?? "",
+      "HW/SW": r.hw_sw ?? "",
+      불량: r.defect ?? "",
+      불량유형: r.defect_type ?? "",
+      "세부 불량": r.defect_detail ?? "",
+      품질점수: r.quality_score ?? "",
+      "T.S 소요 시간\n(단위 : 분)": r.ts_minutes ?? r.ts_time ?? "",
+      적용: r.apply ?? "",
+      비고: r.note ?? "",
+      담당자: r.owner ?? r.manager ?? "",
+      불량구분: r.defect_category ?? "",
+      "불량 위치": r.defect_location ?? "",
+    };
+  });
 };
 
-/**
- * 해당 호기 목록에 대해
- * - 사내 입고 - 출하 리드타임
- * - 사내 입고 - 생산 완료 리드타임
- * - 사내 입고 - 생산 시작 리드타임
- * 을 계산해서 map 형태로 리턴
- */
-const fetchLeadTimesForMachines = async (
-  machineNos: string[]
-): Promise<Record<string, LeadTimeTriple>> => {
-  // 1) 호기 문자열 정리 (trim + 중복 제거)
-  const uniqueNos = Array.from(
-    new Set(
-      machineNos
-        .map((m) => String(m ?? "").trim())
-        .filter((m) => m.length > 0)
-    )
-  );
-
-  const result: Record<string, LeadTimeTriple> = {};
-
-  if (uniqueNos.length === 0) {
-    return result;
-  }
-
-  try {
-    // 2) 백엔드 리드타임 API 호출
-    const { data } = await axios.post<{
-      items: {
-        machine_no: string;
-        in_to_ship_days: number | null;
-        in_to_done_days: number | null;
-        in_to_start_days: number | null;
-      }[];
-    }>(`${API_BASE}/logs/leadtime`, {
-      machine_nos: uniqueNos,
-    }, {
-      timeout: 30000,
-    });
-
-    // 3) 응답을 LeadTimeTriple 맵으로 변환
-    for (const item of data.items ?? []) {
-      const key = String(item.machine_no ?? "").trim();
-      if (!key) continue;
-
-      result[key] = {
-        receipt_to_ship_days:
-          item.in_to_ship_days != null ? Number(item.in_to_ship_days) : null,
-        receipt_to_complete_days:
-          item.in_to_done_days != null ? Number(item.in_to_done_days) : null,
-        receipt_to_start_days:
-          item.in_to_start_days != null ? Number(item.in_to_start_days) : null,
-      };
-    }
-  } catch (e) {
-    console.error("리드타임 계산 API 오류:", e);
-  }
-
-  return result;
-};
-
-// Rawdata 배열 → 차분보고서취합용 요약 배열
-// (합계/평균 행 없이, 각 호기 1행 + 리드타임 3개 컬럼 포함)
+// 차분보고서취합: machine_no 기준 group 후 요약
 const buildSummaryRows = (
   rawRows: Record<string, any>[],
-  leadTimeMap: Record<string, LeadTimeTriple>
-): Record<string, any>[] => {
+  leadTimeMap: Record<
+    string,
+    {
+      receipt_to_ship_days: number | null;
+      receipt_to_complete_days: number | null;
+      receipt_to_start_days: number | null;
+    }
+  >
+) => {
   const grouped: Record<string, Record<string, any>[]> = {};
-
-  // 호기(장비번호) 기준 그룹
-  for (const row of rawRows) {
-    const key = String(row["호기"] ?? "").trim();   // ← trim 추가
-    if (!key) continue;
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(row);
+  for (const r of rawRows) {
+    const machineNo = String(r["호기"] ?? "");
+    if (!machineNo) continue;
+    if (!grouped[machineNo]) grouped[machineNo] = [];
+    grouped[machineNo].push(r);
   }
 
   const result: Record<string, any>[] = [];
 
   Object.entries(grouped).forEach(([machineNo, groupRows]) => {
-    const base = groupRows[0];
+    // Step count init
+    const stepCounts: Record<string, number> = {};
+    SUMMARY_STEP_KEYS.forEach(({ header }) => (stepCounts[header] = 0));
 
     let totalHoursNoPack = 0;
     let totalHoursWithPack = 0;
@@ -314,13 +243,11 @@ const buildSummaryRows = (
     let defectCount = 0;
     let penalty = 0;
 
-    const stepCounts: Record<string, number> = {};
-    SUMMARY_STEP_KEYS.forEach(({ header }) => {
-      stepCounts[header] = 0;
-    });
+    // 기본 row는 첫 행 기준
+    const base = groupRows[0] ?? {};
 
     for (const r of groupRows) {
-      const step = (r["Step"] ?? "").toString();
+      const step = String(r["Step"] ?? "").trim();
 
       const hoursVal = parseFloat(
         String(r["세팅총소요시간(단위 : 시간)"] ?? "")
@@ -416,6 +343,83 @@ const buildSummaryRows = (
   return result;
 };
 
+/* -----------------------------------------------------------------------------
+  정렬 유틸 (클라이언트 사이드)
+  - 컬럼 헤더 클릭: 오름/내림차순 토글
+  - 숫자/날짜/문자 자동 판별
+----------------------------------------------------------------------------- */
+type SortDir = "asc" | "desc";
+
+const isEmptyVal = (v: any) =>
+  v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+
+const tryNumber = (v: any): number | null => {
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  if (typeof v === "boolean") return v ? 1 : 0;
+
+  if (typeof v === "string") {
+    const s = v.trim().replace(/,/g, "");
+    if (!s) return null;
+    // 순수 숫자(정수/소수)만 숫자로 취급
+    if (/^-?\d+(\.\d+)?$/.test(s)) {
+      const n = Number(s);
+      return Number.isNaN(n) ? null : n;
+    }
+  }
+  return null;
+};
+
+const looksLikeDate = (s: string) =>
+  // 2025-12-19, 2025/12/19, 2025-12-19 10:30:00, ISO 문자열 등
+  /^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(s) || s.includes("T");
+
+const tryTime = (v: any): number | null => {
+  if (v instanceof Date) return v.getTime();
+
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+    if (!looksLikeDate(s)) return null;
+    const t = Date.parse(s);
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+};
+
+const compareCell = (a: any, b: any): number => {
+  // 빈 값은 항상 아래로
+  const aEmpty = isEmptyVal(a);
+  const bEmpty = isEmptyVal(b);
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+
+  const an = tryNumber(a);
+  const bn = tryNumber(b);
+  if (an !== null && bn !== null) return an === bn ? 0 : an < bn ? -1 : 1;
+
+  const at = tryTime(a);
+  const bt = tryTime(b);
+  if (at !== null && bt !== null) return at === bt ? 0 : at < bt ? -1 : 1;
+
+  // 나머지는 문자열로 비교 (숫자 포함 정렬에 유리)
+  const as = String(a);
+  const bs = String(b);
+  return as.localeCompare(bs, "ko-KR", { numeric: true, sensitivity: "base" });
+};
+
+const sortRowsBy = (
+  data: Record<string, any>[],
+  sortBy: string | null,
+  dir: SortDir
+) => {
+  if (!sortBy) return data;
+  const mul = dir === "asc" ? 1 : -1;
+  return [...data].sort(
+    (ra, rb) => mul * compareCell(ra?.[sortBy], rb?.[sortBy])
+  );
+};
+
 const LogTableBrowser: React.FC = () => {
   const navigate = useNavigate();
 
@@ -429,6 +433,10 @@ const LogTableBrowser: React.FC = () => {
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
   const [page, setPage] = useState(1);
+
+  // 정렬(컬럼 헤더 클릭)
+  const [sortBy, setSortBy] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [loadingRows, setLoadingRows] = useState(false);
@@ -448,6 +456,23 @@ const LogTableBrowser: React.FC = () => {
   );
   const hasDateFilter = (selectedMeta?.date_fields?.length ?? 0) > 0;
   const dateFieldHint = hasDateFilter ? selectedMeta!.date_fields[0] : null;
+
+  // 정렬 적용된 rows (현재 페이지 기준)
+  const viewRows = useMemo(
+    () => sortRowsBy(rows, sortBy, sortDir),
+    [rows, sortBy, sortDir]
+  );
+
+  const toggleSort = (col: string) => {
+    setSortBy((prev) => {
+      if (prev === col) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return col;
+      }
+      setSortDir("asc");
+      return col;
+    });
+  };
 
   // 테이블 목록 로딩
   useEffect(() => {
@@ -482,6 +507,8 @@ const LogTableBrowser: React.FC = () => {
     const meta = tables.find((t) => t.name === selected);
     setColumns(meta?.columns ?? []);
     setPage(1);
+    setSortBy(null);
+    setSortDir("asc");
     if (!meta?.date_fields?.length) {
       setFrom("");
       setTo("");
@@ -541,7 +568,7 @@ const LogTableBrowser: React.FC = () => {
       if (search.trim()) base.q = search.trim();
       if (hasDateFilter) {
         if (from) base.date_from = from;
-        if (to) base.date_to = to;   // ✅ 수정
+        if (to) base.date_to = to; // ✅ 수정
       }
 
       const probe = await axios.get<RowsRes>(`${API_BASE}/logs/rows`, {
@@ -588,6 +615,7 @@ const LogTableBrowser: React.FC = () => {
       const fileName = `${selected}_${today.getFullYear()}${String(
         today.getMonth() + 1
       ).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}.csv`;
+
       const a = document.createElement("a");
       a.href = url;
       a.download = fileName;
@@ -597,26 +625,26 @@ const LogTableBrowser: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      alert("엑셀(CSV) 내보내기에 실패했습니다. (limit/인코딩 확인)");
+      alert("CSV 내보내기에 실패했습니다.");
     } finally {
       setExporting(false);
     }
   };
 
-  // setup_sheet_all → Rawdata CSV + 차분보고서취합 CSV
+  // Rawdata / 차분보고서취합 CSV 내보내기
   const exportSetupSheetRaw = async () => {
-    if (!isSetupSheetAll) return;
+    if (!selected) return;
     try {
       setExporting(true);
 
-      const base: any = { table: selected };
+      // 1) setup_sheet_all 전체 로딩
+      const base: any = { table: "setup_sheet_all" };
       if (search.trim()) base.q = search.trim();
       if (hasDateFilter) {
         if (from) base.date_from = from;
         if (to) base.date_to = to;
       }
 
-      // 전체 개수 먼저 확인
       const probe = await axios.get<RowsRes>(`${API_BASE}/logs/rows`, {
         params: { ...base, limit: 1, offset: 0 },
         timeout: 30000,
@@ -645,29 +673,38 @@ const LogTableBrowser: React.FC = () => {
         }
       }
 
-      // Rawdata 포맷으로 매핑
-      const mapped = allRows.map((r) =>
-        buildRawRow(r, rawApply, rawNote, rawOwner)
-      );
+      // 2) Rawdata row 변환 + 공통 값 주입(적용/비고/담당자)
+      const rawRows = toRawdataRows(allRows).map((r) => ({
+        ...r,
+        적용: rawApply,
+        비고: rawNote,
+        담당자: rawOwner,
+      }));
 
-      // 요약 시트에 필요한 호기 목록 → 리드타임 계산
-      const machineNos = mapped
-        .map((r) => String(r["호기"] ?? "").trim())
-        .filter((v) => v.length > 0);
-      const leadTimeMap = await fetchLeadTimesForMachines(machineNos);
+      // 3) 리드타임 3개(사내입고→출하/완료/시작) 백엔드에서 받아오기
+      //    (프로젝트에서 이미 사용 중인 엔드포인트가 있다고 가정)
+      //    - 없으면 빈 맵으로 처리
+      let leadTimeMap: any = {};
+      try {
+        const { data } = await axios.get(`${API_BASE}/logcharts/leadtime3`, {
+          timeout: 30000,
+        });
+        leadTimeMap = data ?? {};
+      } catch {
+        leadTimeMap = {};
+      }
 
-      // 차분보고서취합 요약 만들기 (각 호기 1행, 리드타임 3개 포함)
-      const summaryRows = buildSummaryRows(mapped, leadTimeMap);
+      const summaryRows = buildSummaryRows(rawRows, leadTimeMap);
 
       const EOL = "\r\n";
+      const BOM = "\uFEFF";
 
       // 1) Rawdata CSV
       const rawHeader = RAWDATA_HEADERS.map(escapeCsv).join(",");
-      const rawLines = mapped.map((r) =>
+      const rawLines = rawRows.map((r) =>
         RAWDATA_HEADERS.map((h) => escapeCsv((r as any)[h])).join(",")
       );
       const rawCsvBody = [rawHeader, ...rawLines].join(EOL);
-      const BOM = "\uFEFF";
       const rawCsv = BOM + rawCsvBody;
 
       const rawBlob = new Blob([rawCsv], {
@@ -790,21 +827,14 @@ const LogTableBrowser: React.FC = () => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z"
+                  d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 104.5 4.5a7.5 7.5 0 0012.15 12.15z"
                 />
               </svg>
             </div>
 
-            {/* 기간 */}
-            <div className="flex items-center gap-2">
-              <label
-                className={`text-sm ${
-                  hasDateFilter ? "text-slate-600" : "text-slate-400"
-                }`}
-              >
-                기간
-                {dateFieldHint ? ` (${dateFieldHint})` : ""}
-              </label>
+            {/* 기간 필터 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-slate-600">기간</label>
               <input
                 type="date"
                 value={from}
@@ -822,8 +852,8 @@ const LogTableBrowser: React.FC = () => {
               />
             </div>
 
-            {/* 액션들 (우측 정렬) */}
-            <div className="ml-auto flex items-center gap-2">
+            {/* 버튼들 */}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               {isSetupSheetAll && (
                 <button
                   className="h-10 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
@@ -888,27 +918,39 @@ const LogTableBrowser: React.FC = () => {
             <table className="min-w-full text-sm">
               <thead className="sticky top-0 bg-slate-100">
                 <tr>
-                  {columns.map((c) => (
-                    <th
-                      key={c}
-                      className="border-b px-4 py-3 text-left font-semibold text-slate-700"
-                    >
-                      {c}
-                    </th>
-                  ))}
+                  {columns.map((c) => {
+                    const active = sortBy === c;
+                    return (
+                      <th
+                        key={c}
+                        className="border-b px-4 py-3 text-left font-semibold text-slate-700"
+                      >
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 text-left hover:text-slate-900"
+                          onClick={() => toggleSort(c)}
+                          title="클릭하여 정렬(오름/내림 토글)"
+                        >
+                          <span className="truncate">{c}</span>
+                          <span className="text-[11px] text-slate-400">
+                            {active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {loadingMeta || loadingRows ? (
-                  Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i} className="border-b">
-                      {columns.map((c) => (
-                        <td key={c} className="px-4 py-3">
-                          <div className="h-3 w-24 animate-pulse rounded bg-slate-200" />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
+                  <tr>
+                    <td
+                      className="px-4 py-6 text-center text-slate-400"
+                      colSpan={columns.length || 1}
+                    >
+                      불러오는 중…
+                    </td>
+                  </tr>
                 ) : rows.length === 0 ? (
                   <tr>
                     <td
@@ -919,11 +961,13 @@ const LogTableBrowser: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((r, i) => (
+                  viewRows.map((r, i) => (
                     <tr key={i} className="border-b hover:bg-slate-50">
                       {columns.map((c) => (
                         <td key={c} className="px-4 py-3 text-slate-800">
-                          {String(r[c] ?? "")}
+                          {r?.[c] === null || r?.[c] === undefined
+                            ? ""
+                            : String(r[c])}
                         </td>
                       ))}
                     </tr>
@@ -933,11 +977,10 @@ const LogTableBrowser: React.FC = () => {
             </table>
           </div>
 
-          {/* 페이지네이션 */}
-          <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-xs text-slate-500">
-              Rows {(page - 1) * LIMIT + (rows.length ? 1 : 0)}–
-              {(page - 1) * LIMIT + rows.length} of {total}
+          {/* 하단 페이징 */}
+          <div className="flex items-center justify-between border-t bg-white px-4 py-3">
+            <div className="text-sm text-slate-600">
+              총 <span className="font-semibold">{total}</span> 건
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -971,76 +1014,76 @@ const LogTableBrowser: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Rawdata 입력 모달 */}
-      {showRawModal && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
-            <h2 className="text-base font-semibold text-slate-900">
-              Rawdata / 차분보고서취합 출력
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              setup_sheet_all 데이터 기준으로 Rowdata CSV와 차분보고서취합
-              CSV 두 개를 생성합니다. 아래 내용은 모든 행에 동일하게 들어갑니다.
-            </p>
+        {/* Rawdata 입력 모달 */}
+        {showRawModal && (
+          <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
+              <h2 className="text-base font-semibold text-slate-900">
+                Rawdata / 차분보고서취합 출력
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                setup_sheet_all 데이터 기준으로 Rowdata CSV와 차분보고서취합
+                CSV 두 개를 생성합니다. 아래 내용은 모든 행에 동일하게 들어갑니다.
+              </p>
 
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-700">
-                  적용
-                </label>
-                <input
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                  value={rawApply}
-                  onChange={(e) => setRawApply(e.target.value)}
-                />
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-700">
+                    적용
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                    value={rawApply}
+                    onChange={(e) => setRawApply(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700">
+                    비고
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                    value={rawNote}
+                    onChange={(e) => setRawNote(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700">
+                    담당자
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                    value={rawOwner}
+                    onChange={(e) => setRawOwner(e.target.value)}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-700">
-                  비고
-                </label>
-                <input
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                  value={rawNote}
-                  onChange={(e) => setRawNote(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-700">
-                  담당자
-                </label>
-                <input
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                  value={rawOwner}
-                  onChange={(e) => setRawOwner(e.target.value)}
-                />
-              </div>
-            </div>
 
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                onClick={() => setShowRawModal(false)}
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
-                disabled={exporting}
-                onClick={async () => {
-                  await exportSetupSheetRaw();
-                  setShowRawModal(false);
-                }}
-              >
-                {exporting ? "내보내는 중…" : "CSV 두 개 다운로드"}
-              </button>
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  onClick={() => setShowRawModal(false)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+                  disabled={exporting}
+                  onClick={async () => {
+                    await exportSetupSheetRaw();
+                    setShowRawModal(false);
+                  }}
+                >
+                  {exporting ? "내보내는 중…" : "CSV 두 개 다운로드"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
