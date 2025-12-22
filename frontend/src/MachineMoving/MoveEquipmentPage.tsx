@@ -109,6 +109,7 @@ const MoveEquipmentPage: React.FC = () => {
         }
       } catch {
         setErr("장비 목록을 불러오지 못했습니다.");
+        setRows([]); // ✅ 실패 시 이전 데이터 제거
       } finally {
         setLoading(false);
       }
