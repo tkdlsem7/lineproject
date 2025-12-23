@@ -76,58 +76,32 @@ const SUMMARY_HEADERS = [
   "입고 품질 점수(단위 : 점)",
   "불량 건수",
   "T.S 소요 시간\n(단위 : 분)",
+  "COMMON",
+  "STAGE",
+  "LOADER",
+  "STAGE(Advanced)",
+  "Cold Test",
+  "HW",
+  "Option&ETC",
+  "개조 및\n변경점",
+  "Packing&Delivery",
   "적용",
   "비고",
   "담당자",
-
-  // Step 카운트
-  "초기 구동",
-  "Wafer Transfer",
-  "Wafer Chuck",
-  "Aligner",
-  "Pressure Check",
-  "Ionizer",
-  "Robot",
-  "Vacuum",
-  "Leak Check",
-  "Dry Pump",
-  "Door",
-  "Scan",
-  "Z축",
-  "Calibration",
-  "Temp",
-  "Servo",
-  "Option",
-  "Final Check",
-  "Packing&Delivery",
-
-  // 리드타임 3개(요청하신 3줄)
-  SUMMARY_LT_RECEIPT_SHIP,
-  SUMMARY_LT_RECEIPT_COMPLETE,
-  SUMMARY_LT_RECEIPT_START,
 ];
 
 // Step 매핑 키 (차분보고서취합용)
-const SUMMARY_STEP_KEYS = [
-  { header: "초기 구동", match: "Initial" },
-  { header: "Wafer Transfer", match: "Wafer Transfer" },
-  { header: "Wafer Chuck", match: "Wafer Chuck" },
-  { header: "Aligner", match: "Aligner" },
-  { header: "Pressure Check", match: "Pressure Check" },
-  { header: "Ionizer", match: "Ionizer" },
-  { header: "Robot", match: "Robot" },
-  { header: "Vacuum", match: "Vacuum" },
-  { header: "Leak Check", match: "Leak Check" },
-  { header: "Dry Pump", match: "Dry Pump" },
-  { header: "Door", match: "Door" },
-  { header: "Scan", match: "Scan" },
-  { header: "Z축", match: "Z axis" },
-  { header: "Calibration", match: "Calibration" },
-  { header: "Temp", match: "Temp" },
-  { header: "Servo", match: "Servo" },
-  { header: "Option", match: "Option" },
-  { header: "Final Check", match: "Final Check" },
-  { header: "Packing&Delivery", match: "Packing&Delivery" },
+const SUMMARY_DEFECT_GROUP_KEYS = [
+  // STAGE(Advanced)가 STAGE에 포함되지 않도록 순서 중요
+  { header: "COMMON", keys: ["COMMON"] },
+  { header: "STAGE(Advanced)", keys: ["STAGE(ADVANCED)", "STAGE(Advanced)"] },
+  { header: "STAGE", keys: ["STAGE"] },
+  { header: "LOADER", keys: ["LOADER"] },
+  { header: "Cold Test", keys: ["COLDTEST", "COLD TEST"] },
+  { header: "HW", keys: ["HW"] },
+  { header: "Option&ETC", keys: ["OPTION&ETC", "OPTION", "ETC"] },
+  { header: "개조 및\n변경점", keys: ["개조및변경점", "개조 및 변경점", "변경점", "개조", "MODIFY"] },
+  { header: "Packing&Delivery", keys: ["PACKING&DELIVERY", "PACKING", "DELIVERY"] },
 ];
 
 // 날짜 문자열 -> Date 변환(안되면 null)
@@ -177,171 +151,219 @@ const parseMachineNo = (machineNo: string) => {
 };
 
 // setup_sheet_all rows -> Rawdata CSV rows 생성
-const toRawdataRows = (rows: Record<string, any>[]) => {
-  return rows.map((r) => {
-    const machineNo = String(r.machine_no ?? "");
-    const base = parseMachineNo(machineNo);
+// - CSV 다운로드는 DB 컬럼을 그대로 쓰지만, Rawdata 출력은 프론트 매핑을 타기 때문에
+//   컬럼명이 한글/영문으로 바뀌었거나 공백/특수문자가 포함된 경우 값이 비는 문제가 생길 수 있습니다.
+// - pick()로 여러 후보 키를 순서대로 조회하여 호환성을 높입니다.
+  const pickVal = (r: Record<string, any>, keys: string[]) => {
+    for (const k of keys) {
+      const v = (r as any)[k];
+      if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+    }
+    return "";
+  };
 
-    const start = r.setting_start_date ?? r.setting_start ?? r.start_date ?? "";
-    const end = r.setting_end_date ?? r.setting_end ?? r.end_date ?? "";
-    const lead = diffDays(start, end);
+  const toRawdataRows = (rows: Record<string, any>[]) => {
+    return rows.map((r) => {
+      const machineNo = String(r.machine_no ?? "");
+      const base = parseMachineNo(machineNo);
 
-    return {
-      ...base,
-      "S/N": r.serial_number ?? r.serial_no ?? "",
-      "Chiller S/N": r.chiller_serial_number ?? r.chiller_sn ?? "",
-      세팅시작일: start,
-      세팅종료일: end,
-      "리드타임\n(사내 입고 - 출하)": lead,
-      Step: r.step ?? "",
-      "세팅총소요시간(단위 : 시간)": r.total_hours ?? r.setting_total_hours ?? "",
-      "HW/SW": r.hw_sw ?? "",
-      불량: r.defect ?? "",
-      불량유형: r.defect_type ?? "",
-      "세부 불량": r.defect_detail ?? "",
-      품질점수: r.quality_score ?? "",
-      "T.S 소요 시간\n(단위 : 분)": r.ts_minutes ?? r.ts_time ?? "",
-      적용: r.apply ?? "",
-      비고: r.note ?? "",
-      담당자: r.owner ?? r.manager ?? "",
-      불량구분: r.defect_category ?? "",
-      "불량 위치": r.defect_location ?? "",
-    };
-  });
-};
+      const start =
+        r.setup_start_date ??
+        r.setting_start_date ??
+        r.setting_start ??
+        r.start_date ??
+        "";
+      const end =
+        r.setup_end_date ??
+        r.setting_end_date ??
+        r.setting_end ??
+        r.end_date ??
+        "";
+
+      const lead = diffDays(start, end);
+
+      // ts_hours(시간) -> 분으로 변환 (템플릿 단위: 분)
+      const tsMinutes =
+        r.ts_minutes ??
+        r.ts_time ??
+        (r.ts_hours != null && r.ts_hours !== ""
+          ? Math.round(Number(r.ts_hours) * 60)
+          : "");
+
+      return {
+        ...base,
+        "S/N": r.sn ?? r.serial_number ?? r.serial_no ?? "",
+        "Chiller S/N": r.chiller_sn ?? r.chiller_serial_number ?? "",
+        세팅시작일: start,
+        세팅종료일: end,
+        "리드타임\n(사내 입고 - 출하)": lead,
+        Step: r.step_name ?? r.step ?? "",
+        "세팅총소요시간(단위 : 시간)":
+          r.setup_hours ?? r.total_hours ?? r.setting_total_hours ?? "",
+        "HW/SW": r.hw_sw ?? "",
+        불량: r.defect ?? "",
+        불량유형: r.defect_type ?? "",
+        "세부 불량": r.defect_detail ?? "",
+        품질점수: r.quality_score ?? "",
+        "T.S 소요 시간\n(단위 : 분)": tsMinutes,
+        적용: r.apply ?? "",
+        비고: r.note ?? "",
+        담당자: r.owner ?? r.manager ?? "",
+        불량구분: r.defect_group ?? r.defect_category ?? "",
+        "불량 위치": r.defect_location ?? "",
+      };
+    });
+  };
 
 // 차분보고서취합: machine_no 기준 group 후 요약
-const buildSummaryRows = (
-  rawRows: Record<string, any>[],
-  leadTimeMap: Record<
-    string,
-    {
-      receipt_to_ship_days: number | null;
-      receipt_to_complete_days: number | null;
-      receipt_to_start_days: number | null;
-    }
-  >
-) => {
-  const grouped: Record<string, Record<string, any>[]> = {};
-  for (const r of rawRows) {
-    const machineNo = String(r["호기"] ?? "");
-    if (!machineNo) continue;
-    if (!grouped[machineNo]) grouped[machineNo] = [];
-    grouped[machineNo].push(r);
-  }
-
-  const result: Record<string, any>[] = [];
-
-  Object.entries(grouped).forEach(([machineNo, groupRows]) => {
-    // Step count init
-    const stepCounts: Record<string, number> = {};
-    SUMMARY_STEP_KEYS.forEach(({ header }) => (stepCounts[header] = 0));
-
-    let totalHoursNoPack = 0;
-    let totalHoursWithPack = 0;
-    let totalTsMinutes = 0;
-    let defectCount = 0;
-    let penalty = 0;
-
-    // 기본 row는 첫 행 기준
-    const base = groupRows[0] ?? {};
-
-    for (const r of groupRows) {
-      const step = String(r["Step"] ?? "").trim();
-
-      const hoursVal = parseFloat(
-        String(r["세팅총소요시간(단위 : 시간)"] ?? "")
-      );
-      const hours = isNaN(hoursVal) ? 0 : hoursVal;
-
-      totalHoursWithPack += hours;
-      if (step !== "Packing&Delivery") {
-        totalHoursNoPack += hours;
-      }
-
-      const tsVal = parseFloat(
-        String(r["T.S 소요 시간\n(단위 : 분)"] ?? "")
-      );
-      const ts = isNaN(tsVal) ? 0 : tsVal;
-      totalTsMinutes += ts;
-
-      const qVal = parseFloat(String(r["품질점수"] ?? ""));
-      if (!isNaN(qVal)) {
-        penalty += 100 - qVal;
-      }
-
-      if (r["불량"] && String(r["불량"]).trim() !== "") {
-        defectCount += 1;
-      }
-
-      for (const { header, match } of SUMMARY_STEP_KEYS) {
-        if (step === match) {
-          stepCounts[header] = (stepCounts[header] ?? 0) + 1;
-          break;
-        }
-      }
+  const buildSummaryRows = (rawRows: Record<string, any>[]) => {
+    const grouped: Record<string, Record<string, any>[]> = {};
+    for (const r of rawRows) {
+      const machineNo = String(r["호기"] ?? "");
+      if (!machineNo) continue;
+      if (!grouped[machineNo]) grouped[machineNo] = [];
+      grouped[machineNo].push(r);
     }
 
-    const finalQuality = Math.max(0, 100 - penalty);
+    // step 정규화
+    const normStep = (v: any) =>
+      String(v ?? "")
+        .trim()
+        .replace(/\s+/g, "")  // 공백 제거
+        .toUpperCase();
 
-    const firstStart = groupRows[0]["세팅시작일"];
-    const firstEnd = groupRows[0]["세팅종료일"];
-    const lead = diffDays(firstStart, firstEnd);
-
-    // 출하요청일: 일단 세팅종료일 사용 (필요 시 나중에 컬럼 바꿔도 됨)
-    const shipRequest = firstEnd ?? "";
-
-    const summaryRow: Record<string, any> = {
-      모델: base["모델"],
-      차분: base["차분"],
-      호기: base["호기"],
-      "S/N": base["S/N"],
-      "Chiller S/N": base["Chiller S/N"],
-      출하요청일: shipRequest,
-      "리드타임\n(사내 입고 - 출하, 단위 : 일)": lead,
-      "세팅총소요시간(단위 : 시간)":
-        totalHoursNoPack !== 0 ? totalHoursNoPack.toFixed(1) : "",
-      "세팅총소요시간(단위 : 시간)\nPacking&Delivery 포함":
-        totalHoursWithPack !== 0 ? totalHoursWithPack.toFixed(1) : "",
-      "입고 품질 점수(단위 : 점)": finalQuality.toFixed(0),
-      "불량 건수": defectCount,
-      "T.S 소요 시간\n(단위 : 분)":
-        totalTsMinutes !== 0 ? Math.round(totalTsMinutes).toString() : "",
-      적용: base["적용"],
-      비고: base["비고"],
-      담당자: base["담당자"],
-    };
-
-    SUMMARY_STEP_KEYS.forEach(({ header }) => {
-      summaryRow[header] = stepCounts[header] || 0;
+    const initCounts = () => ({
+      COMMON: 0,
+      STAGE: 0,
+      LOADER: 0,
+      "STAGE(Advanced)": 0,
+      "Cold Test": 0,
+      "Option&ETC": 0,
+      "개조 및\n변경점": 0,
+      HW: 0,
+      "Packing&Delivery": 0,
     });
 
-    // ── 리드타임 3개 채우기 ──
-    const lt = leadTimeMap[machineNo];
-    if (lt?.receipt_to_ship_days != null) {
-      summaryRow[SUMMARY_LT_RECEIPT_SHIP] = String(lt.receipt_to_ship_days);
-    }
-    if (lt?.receipt_to_complete_days != null) {
-      summaryRow[SUMMARY_LT_RECEIPT_COMPLETE] = String(
-        lt.receipt_to_complete_days
-      );
-    }
-    if (lt?.receipt_to_start_days != null) {
-      summaryRow[SUMMARY_LT_RECEIPT_START] = String(lt.receipt_to_start_days);
-    }
+    const result: Record<string, any>[] = [];
 
-    result.push(summaryRow);
-  });
+    Object.entries(grouped).forEach(([_, groupRows]) => {
+      const base = groupRows[0] ?? {};
+      const counts = initCounts();
 
-  // 정렬(모델/차분/호기 기준)
-  result.sort((a, b) => {
-    const aKey = `${a["모델"] || ""}_${a["차분"] || ""}_${a["호기"] || ""}`;
-    const bKey = `${b["모델"] || ""}_${b["차분"] || ""}_${b["호기"] || ""}`;
-    return aKey.localeCompare(bKey);
-  });
+      let totalHoursNoPack = 0;
+      let totalHoursWithPack = 0;
+      let totalTsMinutes = 0;
+      let defectCount = 0;
 
-  return result;
-};
+      // ✅ 품질점수: 기본 100에서 행별 품질점수 누적 차감
+      let inboundQuality = 100;
+      let sawQuality = false;
+
+      for (const r of groupRows) {
+        const stepRaw = String(r["Step"] ?? "");
+        const step = normStep(stepRaw);
+
+        // ----- Step 카운트(요청하신 목록 기준, Step만 보고 셈) -----
+        if (step === "COMMON") counts.COMMON += 1;
+        else if (step === "STAGE") counts.STAGE += 1;
+        else if (step === "LOADER") counts.LOADER += 1;
+        else if (step === "STAGE(ADVANCED)" || step === "STAGEADVANCED")
+          counts["STAGE(Advanced)"] += 1;
+        else if (step === "COLDTEST" || step === "COLDTEST") counts["Cold Test"] += 1;
+        else if (step === "OPTION&ETC" || step === "OPTIONETC") counts["Option&ETC"] += 1;
+        else if (step === "개조") counts["개조 및\n변경점"] += 1;
+        else if (step === "HW" || step === "H/W") counts.HW += 1;
+        else if (
+          step === "PACKING&DELIVERY" ||
+          step === "PACKINGDELIVERY" ||
+          step === "PACKING" ||
+          step === "DELIVERY"
+        )
+          counts["Packing&Delivery"] += 1;
+
+        // ----- 시간 합산(기존 유지) -----
+        const hoursVal = parseFloat(String(r["세팅총소요시간(단위 : 시간)"] ?? ""));
+        const hours = isNaN(hoursVal) ? 0 : hoursVal;
+
+        totalHoursWithPack += hours;
+        if (stepRaw !== "Packing&Delivery") totalHoursNoPack += hours;
+
+        const tsVal = parseFloat(String(r["T.S 소요 시간\n(단위 : 분)"] ?? ""));
+        const ts = isNaN(tsVal) ? 0 : tsVal;
+        totalTsMinutes += ts;
+
+        // ----- 불량 건수(기존 기준 유지) -----
+        const defect = String(r["불량"] ?? "").trim();
+        if (defect !== "") defectCount += 1;
+
+        // ----- ✅ 품질점수(요구사항 반영) -----
+        // 품질점수 값이 있으면 100에서 누적 차감
+        const qRaw = r["품질점수"];
+        if (qRaw !== null && qRaw !== undefined && String(qRaw).trim() !== "") {
+          const q = parseFloat(String(qRaw));
+          if (!isNaN(q)) {
+            sawQuality = true;
+            inboundQuality -= q;
+          }
+        }
+      }
+
+      // 기본 100, 범위는 0~100으로 제한
+      if (!sawQuality) inboundQuality = 100;
+      inboundQuality = Math.max(0, Math.min(100, inboundQuality));
+
+      // 리드타임(기존 유지: 세팅시작~종료)
+      const lead = diffDays(base["세팅시작일"], base["세팅종료일"]);
+      const shipRequest = base["세팅종료일"] ?? "";
+
+      const summaryRow: Record<string, any> = {
+        모델: base["모델"],
+        차분: base["차분"],
+        호기: base["호기"],
+        "S/N": base["S/N"],
+        "Chiller S/N": base["Chiller S/N"],
+        출하요청일: shipRequest,
+        "리드타임\n(사내 입고 - 출하, 단위 : 일)": lead,
+
+        "세팅총소요시간(단위 : 시간)":
+          totalHoursNoPack !== 0 ? totalHoursNoPack.toFixed(1) : "",
+        "세팅총소요시간(단위 : 시간)\nPacking&Delivery 포함":
+          totalHoursWithPack !== 0 ? totalHoursWithPack.toFixed(1) : "",
+
+        // ✅ 여기로 들어감(0~100)
+        "입고 품질 점수(단위 : 점)": inboundQuality.toFixed(0),
+
+        "불량 건수": defectCount,
+        "T.S 소요 시간\n(단위 : 분)":
+          totalTsMinutes !== 0 ? Math.round(totalTsMinutes).toString() : "",
+
+        COMMON: counts.COMMON,
+        STAGE: counts.STAGE,
+        LOADER: counts.LOADER,
+        "STAGE(Advanced)": counts["STAGE(Advanced)"],
+        "Cold Test": counts["Cold Test"],
+        HW: counts.HW,
+        "Option&ETC": counts["Option&ETC"],
+        "개조 및\n변경점": counts["개조 및\n변경점"],
+        "Packing&Delivery": counts["Packing&Delivery"],
+
+        적용: base["적용"],
+        비고: base["비고"],
+        담당자: base["담당자"],
+      };
+
+      result.push(summaryRow);
+    });
+
+    // 정렬(모델/차분/호기)
+    result.sort((a, b) => {
+      const aKey = `${a["모델"] || ""}_${a["차분"] || ""}_${a["호기"] || ""}`;
+      const bKey = `${b["모델"] || ""}_${b["차분"] || ""}_${b["호기"] || ""}`;
+      return aKey.localeCompare(bKey);
+    });
+
+    return result;
+  };
 
 /* -----------------------------------------------------------------------------
   정렬 유틸 (클라이언트 사이드)
@@ -694,7 +716,7 @@ const LogTableBrowser: React.FC = () => {
         leadTimeMap = {};
       }
 
-      const summaryRows = buildSummaryRows(rawRows, leadTimeMap);
+      const summaryRows = buildSummaryRows(rawRows);
 
       const EOL = "\r\n";
       const BOM = "\uFEFF";
