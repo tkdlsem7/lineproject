@@ -12,7 +12,13 @@ const LS_BUILDING = "dash_building";
 const LS_SITE = "dash_site";
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
+// ✅ 슬롯 클릭 시 다른 페이지들이 참조하는(기존에 쓰던) 선택 값 키들
+// 프로젝트에 이미 존재하는 키명이라면 그대로 맞춰주세요.
+const LS_SELECTED_SITE = "selected_site";
+const LS_SELECTED_LINE = "selected_line";
+
 type ViewKey = "A" | "B" | "I" | "WAIT" | "JIN";
+const HQ_SITE = "본사";
 const WAIT_SITE = "라인대기";
 const JIN_SITE = "진우리";
 
@@ -30,11 +36,19 @@ function normalizeView(v: string | null): ViewKey {
   return "A";
 }
 
+// ✅ 여기서 “현재 화면이 의미하는 site”를 한 방에 정리
+function viewToSite(v: ViewKey): string {
+  if (v === "WAIT") return WAIT_SITE;
+  if (v === "JIN") return JIN_SITE;
+  return HQ_SITE; // A/B/I는 본사
+}
+
 export default function DashboardMain() {
   const navigate = useNavigate();
 
-  const [hqSite] = useState<string>(() => localStorage.getItem(LS_SITE) ?? "본사");
-  const [building, setBuilding] = useState<ViewKey>(() => normalizeView(localStorage.getItem(LS_BUILDING)));
+  const [building, setBuilding] = useState<ViewKey>(() =>
+    normalizeView(localStorage.getItem(LS_BUILDING))
+  );
 
   const [rows, setRows] = useState<SlotRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -49,8 +63,20 @@ export default function DashboardMain() {
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState<number>(AUTO_REFRESH_MS);
 
+  const isHQ = building === "A" || building === "B" || building === "I";
+
+  // ✅ 화면 전환 시: “선택된 사이트/라인” localStorage를 항상 현재 화면 기준으로 덮어쓰기
+  //    -> 라인대기에서 본사로 왔을 때도 selected_site가 '본사'로 바뀌어서,
+  //       본사 슬롯 클릭 시 정보 입력이 라인대기로 들어가는 문제 해결
   useEffect(() => {
+    const site = viewToSite(building);
+
     localStorage.setItem(LS_BUILDING, building);
+    localStorage.setItem(LS_SITE, site);
+
+    // 다른 페이지(장비정보입력/이동/체크리스트 등)가 보는 키도 같이 맞춰줌
+    localStorage.setItem(LS_SELECTED_SITE, site);
+    localStorage.setItem(LS_SELECTED_LINE, building); // 필요 없으면 지워도 됨
   }, [building]);
 
   const load = useCallback(async () => {
@@ -70,7 +96,8 @@ export default function DashboardMain() {
         const list = await fetchSlots({ site: JIN_SITE, building: "JIN" as any });
         setRows(list);
       } else {
-        const list = await fetchSlots({ site: hqSite, building });
+        // ✅ 본사(A/B/I)는 site를 무조건 "본사"로 고정
+        const list = await fetchSlots({ site: HQ_SITE, building });
         setRows(list);
       }
 
@@ -81,7 +108,7 @@ export default function DashboardMain() {
     } finally {
       setLoading(false);
     }
-  }, [hqSite, building]);
+  }, [building]);
 
   useEffect(() => {
     void load();
@@ -123,8 +150,6 @@ export default function DashboardMain() {
     rows.forEach((r) => m.set(String(r.slot_code ?? "").toUpperCase(), r));
     return m;
   }, [rows]);
-
-  const isHQ = building === "A" || building === "B" || building === "I";
 
   const RootBtn = ({
     active,
@@ -193,7 +218,14 @@ export default function DashboardMain() {
 
           <ul className="mt-1 ml-3 pl-2 border-l border-slate-700 space-y-2">
             <li>
-              <RootBtn active={isHQ} label="본사" onClick={() => !isHQ && setBuilding("A")} />
+              <RootBtn
+                active={isHQ}
+                label="본사"
+                onClick={() => {
+                  // ✅ 본사 루트 클릭 시 A로 진입
+                  setBuilding("A");
+                }}
+              />
               {isHQ && (
                 <ul className="mt-1 ml-4 pl-3 border-l border-slate-700/70 space-y-1">
                   {(["A", "B", "I"] as const).map((b) => (
