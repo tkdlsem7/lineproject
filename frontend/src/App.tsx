@@ -21,6 +21,9 @@ import BoardDetailPage from "./Board/BoardDetailPage";
 import LogTableBrowser from "./logtable/LogTableBrowser";
 import LogChartPage from "./LogChart/LogChartPage";
 import UserEditPage from "./Login/UserEditPage";
+import AttendanceHistoryPage from "./Attendance/AttendanceHistoryPage";
+import LineAccessCurrentPage from "./LineAccess/LineAccessCurrentPage";
+import LineAccessLogsPage from "./LineAccess/LineAccessLogsPage";
 
 // ✅ 토큰만 확인하는 최소 가드
 const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -79,6 +82,7 @@ export default function App() {
       <Route path="/board/:no" element={<BoardDetailPage />} />
       <Route path="/logs/table" element={<LogTableBrowser />} />
       <Route path="/log/charts" element={<LogChartPage />} />
+      <Route path="/line-access/logs" element={<LineAccessLogsPage />} />
 
       <Route
         path="/board/new"
@@ -102,6 +106,24 @@ export default function App() {
         element={
           <RequireAuth>
             <UserEditPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/attendance"
+        element={
+          <RequireAuth>
+            <AttendanceHistoryPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/line-access"
+        element={
+          <RequireAuth>
+            <LineAccessCurrentPage />
           </RequireAuth>
         }
       />

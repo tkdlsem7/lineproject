@@ -24,6 +24,8 @@ from .Main_main.routers import router as main_router
 from .LogBrowser.routers import router as log_browser_router
 from .LogChart.routers import router as log_chart_router
 from .account.routers import router as account_router
+from .LineAccessCurrent.routers import router as line_access_router
+from .Attendance_history.routers import router as attendance_history_router
 
 from .deps import engine
 
@@ -78,6 +80,8 @@ api.include_router(board_post_router)
 api.include_router(main_router)
 api.include_router(log_browser_router)
 api.include_router(log_chart_router)
+api.include_router(attendance_history_router)
+api.include_router(line_access_router)
 api.include_router(account_router)
 
 
