@@ -20,6 +20,7 @@ import BoardDetailPage from "./Board/BoardDetailPage";
 
 import LogTableBrowser from "./logtable/LogTableBrowser";
 import LogChartPage from "./LogChart/LogChartPage";
+import UserEditPage from "./Login/UserEditPage";
 
 // ✅ 토큰만 확인하는 최소 가드
 const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -92,6 +93,15 @@ export default function App() {
         element={
           <RequireAuth>
             <BoardEditPage />
+          </RequireAuth>
+        }
+      />s
+
+      <Route
+        path="/account/edit"
+        element={
+          <RequireAuth>
+            <UserEditPage />
           </RequireAuth>
         }
       />
