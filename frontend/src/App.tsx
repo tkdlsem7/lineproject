@@ -24,6 +24,9 @@ import UserEditPage from "./Login/UserEditPage";
 import AttendanceHistoryPage from "./Attendance/AttendanceHistoryPage";
 import LineAccessCurrentPage from "./LineAccess/LineAccessCurrentPage";
 import LineAccessLogsPage from "./LineAccess/LineAccessLogsPage";
+import EquipmentGanttPage from "./Calender/EquipmentGanttPage";
+import EquipmentCalendarPage from "./Calender/EquipmentCalendarPage";
+import CalendarExcelUploadPage from "./Calender/ScheduleExcelUploadPage";
 
 // ✅ 토큰만 확인하는 최소 가드
 const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -77,12 +80,30 @@ export default function App() {
       <Route path="/machine-move" element={<MoveEquipmentPage />} />
       <Route path="/troubleshoot" element={<TroubleShootPage />} />
       <Route path="/SetupDefectEntryPage" element={<SetupDefectEntryPages />} />
-
       <Route path="/board" element={<BoardPage />} />
       <Route path="/board/:no" element={<BoardDetailPage />} />
       <Route path="/logs/table" element={<LogTableBrowser />} />
       <Route path="/log/charts" element={<LogChartPage />} />
       <Route path="/line-access/logs" element={<LineAccessLogsPage />} />
+      <Route path="/gantt" element={<EquipmentGanttPage />} />
+
+      <Route
+        path="/calendar"
+        element={
+          <RequireAuth>
+            <EquipmentCalendarPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/calendar/upload"
+        element={
+          <RequireAuth>
+            <CalendarExcelUploadPage />
+          </RequireAuth>
+        }
+      />
 
       <Route
         path="/board/new"
@@ -92,6 +113,7 @@ export default function App() {
           </RequireAuth>
         }
       />
+
       <Route
         path="/board/:no/edit"
         element={
