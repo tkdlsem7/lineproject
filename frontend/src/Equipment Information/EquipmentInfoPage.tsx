@@ -1,6 +1,7 @@
 // src/pages/EquipmentInfoPage.tsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../lib/AuthContext"; // ✅ 경로 맞추기
 
 /* -----------------------------------------------------------------------------
   공통 유틸
@@ -38,7 +39,6 @@ async function fetchAllTaskOptions(): Promise<OptionRow[]> {
 }
 
 // (선택) 이미 저장된 입고일을 불러올 수 있도록 “있으면” 조회
-// - 백엔드에 해당 엔드포인트가 없으면 조용히 무시됩니다.
 async function tryFetchReceiptDate(machineId: string): Promise<string | null> {
   const mid = machineId.trim();
   if (!mid) return null;
@@ -93,7 +93,7 @@ type InfoIntentLite = {
   machineId?: string;
   values?: {
     shipDate?: string | null;
-    receiveDate?: string | null; // ✅ 추가
+    receiveDate?: string | null;
     manager?: string | null;
     customer?: string | null;
     status?: "가능" | "불가능" | string | null;
@@ -192,7 +192,10 @@ const OptionSelectModal: React.FC<{
             <div className="text-base font-semibold text-gray-900">장비 옵션 선택</div>
             <div className="mt-1 text-xs text-gray-500">검색 후 체크박스로 선택하세요.</div>
           </div>
-          <button onClick={onClose} className="rounded-full bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200">
+          <button
+            onClick={onClose}
+            className="rounded-full bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200"
+          >
             닫기
           </button>
         </div>
@@ -227,7 +230,11 @@ const OptionSelectModal: React.FC<{
                         />
                         <span className="text-sm text-slate-800">{row.name}</span>
                       </div>
-                      {checked && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700">선택됨</span>}
+                      {checked && (
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700">
+                          선택됨
+                        </span>
+                      )}
                     </li>
                   );
                 })}
@@ -239,7 +246,10 @@ const OptionSelectModal: React.FC<{
         <div className="mt-4 flex items-center justify-between px-5 pb-5">
           <span className="text-xs text-gray-500">선택: {picked.size}건</span>
           <div className="flex gap-2">
-            <button onClick={onClose} className="rounded-full bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300">
+            <button
+              onClick={onClose}
+              className="rounded-full bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
+            >
               취소
             </button>
             <button
@@ -262,6 +272,10 @@ const EquipmentInfoPage: React.FC = () => {
   const query = useQuery();
   const navigate = useNavigate();
 
+  // ✅ 전역 auth 사용 (auth >= 1 이면 수정/입력 가능)
+  const { auth } = useAuth();
+  const canEdit = (auth ?? 0) >= 1;
+
   // 진입정보
   const site = query.get("site") ?? safeGet("selected_site") ?? "본사";
   const line = query.get("line") ?? safeGet("selected_line") ?? "A동";
@@ -275,7 +289,7 @@ const EquipmentInfoPage: React.FC = () => {
   // 폼 상태
   const [machineId, setMachineId] = useState<string>(machineInit);
   const [shippingDate, setShippingDate] = useState<string>("");
-  const [receiveDate, setReceiveDate] = useState<string>(""); // ✅ 추가
+  const [receiveDate, setReceiveDate] = useState<string>("");
   const [manager, setManager] = useState<string>("");
   const [customer, setCustomer] = useState<string>("");
   const [status, setStatus] = useState<"가능" | "불가능">("불가능");
@@ -287,7 +301,7 @@ const EquipmentInfoPage: React.FC = () => {
   const [selectedOptions, setSelectedOptions] = useState<OptionRow[]>([]);
   const [optOpen, setOptOpen] = useState(false);
 
-  // ✅ 사용자가 옵션/입고일을 수동으로 만졌는지 추적 (자동 덮어쓰기 방지)
+  // 사용자가 옵션/입고일을 수동으로 만졌는지 추적
   const optionsDirtyRef = useRef(false);
   const receiveDirtyRef = useRef(false);
 
@@ -363,7 +377,7 @@ const EquipmentInfoPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ (선택) 기존 입고일 자동 조회: receiveDate가 비어있고, 사용자가 아직 안 건드렸을 때만 채움
+  // 기존 입고일 자동 조회: receiveDate가 비어있고, 사용자가 아직 안 건드렸을 때만 채움
   useEffect(() => {
     let aborted = false;
 
@@ -427,19 +441,28 @@ const EquipmentInfoPage: React.FC = () => {
 
   // 옵션 모달 콜백
   const handleOptionConfirm = (rows: OptionRow[]) => {
+    if (!canEdit) return; // ✅ 권한 없으면 수정 불가
     const map = new Map<number, OptionRow>();
     rows.forEach((r) => map.set(r.id, r));
     setSelectedOptions(Array.from(map.values()));
     optionsDirtyRef.current = true;
     setOptOpen(false);
   };
+
   const removeOne = (id: number) => {
+    if (!canEdit) return; // ✅ 권한 없으면 수정 불가
     setSelectedOptions((prev) => prev.filter((r) => r.id !== id));
     optionsDirtyRef.current = true;
   };
 
   // 저장
   const handleSave = async () => {
+    // ✅ 핵심: 권한 없으면 저장 차단
+    if (!canEdit) {
+      alert("권한이 부족하여 수정/입력할 수 없습니다.");
+      return;
+    }
+
     try {
       if (!machineId.trim()) return alert("Machine ID를 입력해주세요.");
       if (!slot.trim()) return alert("슬롯 정보가 없습니다. 대시보드에서 다시 시도해주세요.");
@@ -475,7 +498,6 @@ const EquipmentInfoPage: React.FC = () => {
       });
 
       if (!res.ok) {
-        // ✅ 409(중복) 메시지까지 예쁘게 처리
         let detail = `저장 실패: ${res.status}`;
         try {
           const data = await res.json();
@@ -488,7 +510,9 @@ const EquipmentInfoPage: React.FC = () => {
         }
 
         if (res.status === 409) {
-          throw new Error(`중복된 장비 호기입니다.\n${detail}\n\n기존 위치를 확인하거나 다른 호기를 입력해주세요.`);
+          throw new Error(
+            `중복된 장비 호기입니다.\n${detail}\n\n기존 위치를 확인하거나 다른 호기를 입력해주세요.`
+          );
         }
         throw new Error(detail);
       }
@@ -510,6 +534,13 @@ const EquipmentInfoPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-6">
       <div className="mx-auto w-full max-w-5xl">
+        {/* ✅ 권한 없을 때 안내 배너 */}
+        {!canEdit && (
+          <div className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-100">
+            현재 계정은 <b>조회만 가능</b>합니다. (수정/입력/저장 불가)
+          </div>
+        )}
+
         <div className="mb-6 flex items-center justify-between">
           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{site}</span>
@@ -530,8 +561,12 @@ const EquipmentInfoPage: React.FC = () => {
           header={pageTitle}
           right={
             <button
-              onClick={() => setOptOpen(true)}
-              className="rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-sky-700"
+              onClick={() => canEdit && setOptOpen(true)}
+              disabled={!canEdit}
+              className={`rounded-full px-4 py-2 text-sm font-semibold text-white shadow ${
+                canEdit ? "bg-sky-600 hover:bg-sky-700" : "bg-gray-400 cursor-not-allowed"
+              }`}
+              title={!canEdit ? "권한이 부족하여 옵션 수정 불가" : "장비 옵션 선택"}
             >
               장비 옵션 선택
             </button>
@@ -554,8 +589,14 @@ const EquipmentInfoPage: React.FC = () => {
                       {opt.name}
                       <button
                         onClick={() => removeOne(opt.id)}
-                        className="rounded-full bg-sky-100 px-2 text-[10px] text-sky-700 hover:bg-sky-200"
+                        disabled={!canEdit}
+                        className={`rounded-full px-2 text-[10px] ${
+                          canEdit
+                            ? "bg-sky-100 text-sky-700 hover:bg-sky-200"
+                            : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        }`}
                         aria-label={`${opt.name} 제거`}
+                        title={!canEdit ? "권한 부족" : `${opt.name} 제거`}
                       >
                         ✕
                       </button>
@@ -575,38 +616,46 @@ const EquipmentInfoPage: React.FC = () => {
                     value={machineId}
                     onChange={(e) => setMachineId(e.target.value)}
                     placeholder="예) j-07-02"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                    disabled={!canEdit}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
+                      canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+                    }`}
                   />
                   <p className="mt-1 text-xs text-gray-400">중복된 호기는 저장 시 차단됩니다.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
-                      출하일
-                    </label>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">출하일</label>
                     <input
                       type="date"
                       value={shippingDate}
                       onChange={(e) => setShippingDate(e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                      disabled={!canEdit}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
+                        canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+                      }`}
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
-                      입고일
-                    </label>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">입고일</label>
                     <input
                       type="date"
                       value={receiveDate}
                       onChange={(e) => {
+                        if (!canEdit) return;
                         receiveDirtyRef.current = true;
                         setReceiveDate(e.target.value);
                       }}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                      disabled={!canEdit}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
+                        canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+                      }`}
                     />
-                    <p className="mt-1 text-xs text-gray-400">입고일을 수정하면 receipt_log도 함께 갱신됩니다.</p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      입고일을 수정하면 receipt_log도 함께 갱신됩니다.
+                    </p>
                   </div>
                 </div>
 
@@ -616,7 +665,10 @@ const EquipmentInfoPage: React.FC = () => {
                     value={manager}
                     onChange={(e) => setManager(e.target.value)}
                     placeholder="담당자"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                    disabled={!canEdit}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
+                      canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+                    }`}
                   />
                 </div>
 
@@ -626,7 +678,10 @@ const EquipmentInfoPage: React.FC = () => {
                     value={customer}
                     onChange={(e) => setCustomer(e.target.value)}
                     placeholder="고객사"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                    disabled={!canEdit}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
+                      canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+                    }`}
                   />
                 </div>
               </div>
@@ -638,28 +693,33 @@ const EquipmentInfoPage: React.FC = () => {
                     value={serialNumber}
                     onChange={(e) => setSerialNumber(e.target.value)}
                     placeholder="Serial Number"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                    disabled={!canEdit}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
+                      canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+                    }`}
                   />
                 </div>
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">출하 가능 여부</label>
-                  <div className="flex items-center gap-2 rounded-xl bg-gray-50 p-2">
+                  <div className={`flex items-center gap-2 rounded-xl p-2 ${canEdit ? "bg-gray-50" : "bg-gray-100"}`}>
                     <button
                       type="button"
-                      onClick={() => setStatus("가능")}
+                      onClick={() => canEdit && setStatus("가능")}
+                      disabled={!canEdit}
                       className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                         status === "가능" ? "bg-emerald-600 text-white" : "text-gray-700 hover:bg-white"
-                      }`}
+                      } ${!canEdit ? "opacity-60 cursor-not-allowed hover:bg-transparent" : ""}`}
                     >
                       출하 가능
                     </button>
                     <button
                       type="button"
-                      onClick={() => setStatus("불가능")}
+                      onClick={() => canEdit && setStatus("불가능")}
+                      disabled={!canEdit}
                       className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                         status === "불가능" ? "bg-rose-600 text-white" : "text-gray-700 hover:bg-white"
-                      }`}
+                      } ${!canEdit ? "opacity-60 cursor-not-allowed hover:bg-transparent" : ""}`}
                     >
                       출하 불가능
                     </button>
@@ -672,7 +732,10 @@ const EquipmentInfoPage: React.FC = () => {
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="특이사항 메모"
-                    className="h-28 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                    disabled={!canEdit}
+                    className={`h-28 w-full resize-none rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
+                      canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+                    }`}
                   />
                 </div>
               </div>
@@ -687,10 +750,11 @@ const EquipmentInfoPage: React.FC = () => {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || !canEdit}
                 className={`rounded-full px-5 py-2 text-sm font-semibold text-white ${
-                  saving ? "bg-gray-400" : "bg-orange-500 hover:bg-orange-600"
+                  saving || !canEdit ? "bg-gray-400 cursor-not-allowed" : "bg-orange-500 hover:bg-orange-600"
                 }`}
+                title={!canEdit ? "권한 부족" : "저장"}
               >
                 {saving ? "저장 중..." : "저장"}
               </button>
@@ -699,6 +763,7 @@ const EquipmentInfoPage: React.FC = () => {
         </Shell>
       </div>
 
+      {/* ✅ 옵션 모달은 수정 권한 있을 때만 열릴 수 있게 위에서 막음 */}
       <OptionSelectModal
         open={optOpen}
         initialSelected={selectedOptions}
