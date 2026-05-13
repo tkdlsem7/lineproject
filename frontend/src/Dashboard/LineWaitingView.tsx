@@ -10,6 +10,9 @@ const TILE_H = "h-[120px]";
 const GAP = "gap-6";
 const pulseRing = "ring-4 ring-indigo-400 ring-offset-2 animate-pulse";
 
+// ✅ 라인당 슬롯 개수 (기존 10 → 20)
+const SLOTS_PER_LINE = 20;
+
 const LS = {
   SELECTED_SITE: "selected_site",
   SELECTED_LINE: "selected_line",
@@ -89,9 +92,15 @@ function Legend() {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
       <span className="inline-block rounded-full bg-blue-600 px-2 py-0.5 text-white">1–49%</span>
-      <span className="inline-block rounded-full bg-amber-500 px-2 py-0.5 text-white">50–99%</span>
-      <span className="inline-block rounded-full bg-green-600 px-2 py-0.5 text-white">100% (출하 준비)</span>
-      <span className="inline-block rounded-full bg-gray-300 px-2 py-0.5 text-gray-700">빈 슬롯</span>
+      <span className="inline-block rounded-full bg-amber-500 px-2 py-0.5 text-white">
+        50–99%
+      </span>
+      <span className="inline-block rounded-full bg-green-600 px-2 py-0.5 text-white">
+        100% (출하 준비)
+      </span>
+      <span className="inline-block rounded-full bg-gray-300 px-2 py-0.5 text-gray-700">
+        빈 슬롯
+      </span>
     </div>
   );
 }
@@ -133,23 +142,16 @@ export default function LineWaitingView({
     siteLabelProp ?? safeGet(LS.SELECTED_SITE, safeGet("dash_site", "본사"));
   const lineLabel = "라인대기";
 
-  // ✅ 6행 5열 + 그룹 사이 구분선
-  // A(1~5), A(6~10), [divider], B(1~5), B(6~10), [divider], I(1~5), I(6~10)
-  // ✅ 라벨: a1/a2/... b1/... i1/...
+  // ✅ 라인당 20칸 + 그룹 사이 구분선
+  // A(1~20), [divider], B(1~20), [divider], I(1~20)
   const cells: Cell[] = useMemo(() => {
     const out: Cell[] = [];
 
     for (let gi = 0; gi < WAIT_GROUPS.length; gi++) {
       const prefix = WAIT_GROUPS[gi].prefix;
 
-      // 1~5
-      for (let n = 1; n <= 5; n++) {
+      for (let n = 1; n <= SLOTS_PER_LINE; n++) {
         const slotCode = `${prefix}${n}`; // 데이터 매칭은 대문자 유지
-        out.push({ kind: "slot", slotCode, label: slotCode.toLowerCase() });
-      }
-      // 6~10
-      for (let n = 6; n <= 10; n++) {
-        const slotCode = `${prefix}${n}`;
         out.push({ kind: "slot", slotCode, label: slotCode.toLowerCase() });
       }
 
@@ -258,6 +260,8 @@ export default function LineWaitingView({
                     progress={row.progress ?? 0}
                     shipDate={row.shipping_date ?? null}
                     manager={row.manager ?? null}
+                    improvementStatus={row.improvement_status}
+                    remodelProgressStatus={row.remodel_progress_status}
                     slotCode={row.slot_code}
                     sizeClass={`${TILE_W} ${TILE_H}`}
                     isOpen={isOpen}

@@ -215,7 +215,9 @@ export default function JinwooriView({
                     progress={row.progress ?? 0}
                     shipDate={row.shipping_date ?? null}
                     manager={row.manager ?? null}
-                    slotCode={posCode} // ✅ 진우리에서는 가상 슬롯코드 사용
+                    improvementStatus={row.improvement_status}
+                    remodelProgressStatus={row.remodel_progress_status}
+                    slotCode={row.slot_code}
                     sizeClass={`${TILE_W} ${TILE_H}`}
                     isOpen={isOpen}
                     onToggleMenu={() => onToggleMenu(posCode)}

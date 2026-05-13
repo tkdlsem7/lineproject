@@ -12,8 +12,7 @@ const LS_BUILDING = "dash_building";
 const LS_SITE = "dash_site";
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
-// ✅ 슬롯 클릭 시 다른 페이지들이 참조하는(기존에 쓰던) 선택 값 키들
-// 프로젝트에 이미 존재하는 키명이라면 그대로 맞춰주세요.
+// 슬롯 클릭 시 다른 페이지들이 참조하는 선택 값 키
 const LS_SELECTED_SITE = "selected_site";
 const LS_SELECTED_LINE = "selected_line";
 
@@ -22,12 +21,25 @@ const HQ_SITE = "본사";
 const WAIT_SITE = "라인대기";
 const JIN_SITE = "진우리";
 
+const SEARCH_HIT_CLASSES = [
+  "ring-8",
+  "ring-fuchsia-500",
+  "ring-offset-4",
+  "ring-offset-white",
+  "scale-110",
+  "shadow-[0_0_0_8px_rgba(217,70,239,0.18)]",
+  "animate-pulse",
+  "z-20",
+] as const;
+
 function useDebounced<T>(v: T, d = 200): T {
   const [x, setX] = useState(v);
+
   useEffect(() => {
     const id = setTimeout(() => setX(v), d);
     return () => clearTimeout(id);
   }, [v, d]);
+
   return x;
 }
 
@@ -36,11 +48,18 @@ function normalizeView(v: string | null): ViewKey {
   return "A";
 }
 
-// ✅ 여기서 “현재 화면이 의미하는 site”를 한 방에 정리
 function viewToSite(v: ViewKey): string {
   if (v === "WAIT") return WAIT_SITE;
   if (v === "JIN") return JIN_SITE;
-  return HQ_SITE; // A/B/I는 본사
+  return HQ_SITE;
+}
+
+function clearSearchHitEffects() {
+  const nodes = document.querySelectorAll<HTMLElement>("[data-search-hit='1']");
+  nodes.forEach((el) => {
+    el.removeAttribute("data-search-hit");
+    el.classList.remove(...SEARCH_HIT_CLASSES);
+  });
 }
 
 export default function DashboardMain() {
@@ -57,26 +76,25 @@ export default function DashboardMain() {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebounced(query, 200);
 
-  // ✅ 본사/라인대기: slot_code 하이라이트, 진우리: machine_id 하이라이트
+  // 본사/라인대기: slot_code 하이라이트, 진우리: machine_id 하이라이트
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
+
+  // 같은 검색어를 다시 눌러도 이펙트 재실행되게 하는 용도
+  const [highlightTick, setHighlightTick] = useState(0);
 
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState<number>(AUTO_REFRESH_MS);
 
   const isHQ = building === "A" || building === "B" || building === "I";
 
-  // ✅ 화면 전환 시: “선택된 사이트/라인” localStorage를 항상 현재 화면 기준으로 덮어쓰기
-  //    -> 라인대기에서 본사로 왔을 때도 selected_site가 '본사'로 바뀌어서,
-  //       본사 슬롯 클릭 시 정보 입력이 라인대기로 들어가는 문제 해결
   useEffect(() => {
     const site = viewToSite(building);
 
     localStorage.setItem(LS_BUILDING, building);
     localStorage.setItem(LS_SITE, site);
 
-    // 다른 페이지(장비정보입력/이동/체크리스트 등)가 보는 키도 같이 맞춰줌
     localStorage.setItem(LS_SELECTED_SITE, site);
-    localStorage.setItem(LS_SELECTED_LINE, building); // 필요 없으면 지워도 됨
+    localStorage.setItem(LS_SELECTED_LINE, building);
   }, [building]);
 
   const load = useCallback(async () => {
@@ -92,11 +110,9 @@ export default function DashboardMain() {
         ]);
         setRows([...a, ...b, ...i]);
       } else if (building === "JIN") {
-        // ✅ 진우리는 building="JIN"으로 1번만 호출
         const list = await fetchSlots({ site: JIN_SITE, building: "JIN" as any });
         setRows(list);
       } else {
-        // ✅ 본사(A/B/I)는 site를 무조건 "본사"로 고정
         const list = await fetchSlots({ site: HQ_SITE, building });
         setRows(list);
       }
@@ -115,35 +131,127 @@ export default function DashboardMain() {
   }, [load]);
 
   useEffect(() => {
-    const tick = setInterval(() => setCountdown((ms) => (ms > 1000 ? ms - 1000 : 0)), 1000);
-    const auto = setInterval(() => void load(), AUTO_REFRESH_MS);
+    const tick = setInterval(() => {
+      setCountdown((ms) => (ms > 1000 ? ms - 1000 : 0));
+    }, 1000);
+
+    const auto = setInterval(() => {
+      void load();
+    }, AUTO_REFRESH_MS);
+
     return () => {
       clearInterval(tick);
       clearInterval(auto);
     };
   }, [load]);
 
+  const activateHighlight = useCallback((key: string | null) => {
+    setHighlightedKey(key);
+    setHighlightTick((v) => v + 1);
+  }, []);
+
+  const findMatchedRow = useCallback(
+    (q: string) => {
+      const keyword = q.trim().toLowerCase();
+      if (!keyword) return null;
+
+      return (
+        rows.find((r) => String(r.machine_id ?? "").toLowerCase().includes(keyword)) ?? null
+      );
+    },
+    [rows]
+  );
+
   useEffect(() => {
     const q = debouncedQuery.trim().toLowerCase();
-    if (!q) return setHighlightedKey(null);
+    if (!q) {
+      activateHighlight(null);
+      return;
+    }
 
-    const found = rows.find((r) => String(r.machine_id ?? "").toLowerCase().includes(q));
-    if (!found) return setHighlightedKey(null);
+    const found = findMatchedRow(q);
+    if (!found) {
+      activateHighlight(null);
+      return;
+    }
 
-    if (building === "JIN") setHighlightedKey(String(found.machine_id ?? ""));
-    else setHighlightedKey(String(found.slot_code ?? ""));
-  }, [debouncedQuery, rows, building]);
+    if (building === "JIN") activateHighlight(String(found.machine_id ?? ""));
+    else activateHighlight(String(found.slot_code ?? ""));
+  }, [debouncedQuery, rows, building, activateHighlight, findMatchedRow]);
 
   const onSearchClick = () => {
     const q = query.trim().toLowerCase();
-    if (!q) return setHighlightedKey(null);
+    if (!q) {
+      activateHighlight(null);
+      return;
+    }
 
-    const found = rows.find((r) => String(r.machine_id ?? "").toLowerCase().includes(q));
-    if (!found) return setHighlightedKey(null);
+    const found = findMatchedRow(q);
+    if (!found) {
+      activateHighlight(null);
+      window.alert("검색한 호기를 찾지 못했습니다.");
+      return;
+    }
 
-    if (building === "JIN") setHighlightedKey(String(found.machine_id ?? ""));
-    else setHighlightedKey(String(found.slot_code ?? ""));
+    if (building === "JIN") activateHighlight(String(found.machine_id ?? ""));
+    else activateHighlight(String(found.slot_code ?? ""));
   };
+
+  const findSearchTargetElement = useCallback(
+    (key: string | null): HTMLElement | null => {
+      if (!key) return null;
+
+      const cards = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-card-root='1']")
+      );
+
+      if (building === "JIN") {
+        const normalizedKey = key.trim().toLowerCase();
+        return (
+          cards.find(
+            (el) => String(el.dataset.machineId ?? "").trim().toLowerCase() === normalizedKey
+          ) ?? null
+        );
+      }
+
+      const normalizedKey = key.trim().toUpperCase();
+      return (
+        cards.find(
+          (el) => String(el.dataset.slotCode ?? "").trim().toUpperCase() === normalizedKey
+        ) ?? null
+      );
+    },
+    [building]
+  );
+
+  useEffect(() => {
+    clearSearchHitEffects();
+
+    if (!highlightedKey) return;
+
+    const scrollTimer = window.setTimeout(() => {
+      const target = findSearchTargetElement(highlightedKey);
+      if (!target) return;
+
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "center",
+      });
+
+      target.setAttribute("data-search-hit", "1");
+      target.classList.add(...SEARCH_HIT_CLASSES);
+    }, 80);
+
+    const clearTimer = window.setTimeout(() => {
+      clearSearchHitEffects();
+    }, 4200);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [highlightedKey, highlightTick, rows, building, findSearchTargetElement]);
 
   const equipMap = useMemo(() => {
     const m = new Map<string, SlotRow>();
@@ -205,8 +313,8 @@ export default function DashboardMain() {
               새로고침
             </button>
             <div className="text-xs text-slate-600">
-              마지막 동기화: {lastSyncAt ? lastSyncAt.toLocaleTimeString() : "-"} · 자동 새로고침까지{" "}
-              {Math.ceil(countdown / 1000)}s
+              마지막 동기화: {lastSyncAt ? lastSyncAt.toLocaleTimeString() : "-"} · 자동
+              새로고침까지 {Math.ceil(countdown / 1000)}s
             </div>
           </div>
         </div>
@@ -222,7 +330,6 @@ export default function DashboardMain() {
                 active={isHQ}
                 label="본사"
                 onClick={() => {
-                  // ✅ 본사 루트 클릭 시 A로 진입
                   setBuilding("A");
                 }}
               />
@@ -245,11 +352,19 @@ export default function DashboardMain() {
             </li>
 
             <li className="pt-2 border-t border-slate-700/60">
-              <RootBtn active={building === "WAIT"} label="라인대기" onClick={() => setBuilding("WAIT")} />
+              <RootBtn
+                active={building === "WAIT"}
+                label="라인대기"
+                onClick={() => setBuilding("WAIT")}
+              />
             </li>
 
             <li className="pt-2 border-t border-slate-700/60">
-              <RootBtn active={building === "JIN"} label="진우리" onClick={() => setBuilding("JIN")} />
+              <RootBtn
+                active={building === "JIN"}
+                label="진우리"
+                onClick={() => setBuilding("JIN")}
+              />
             </li>
           </ul>
         </aside>
@@ -260,11 +375,23 @@ export default function DashboardMain() {
           ) : loading ? (
             <div className="rounded-xl border bg-white p-10 text-slate-600">불러오는 중…</div>
           ) : building === "A" ? (
-            <ABuildingView equipMap={equipMap} highlightedSlot={highlightedKey} onShipped={() => void load()} />
+            <ABuildingView
+              equipMap={equipMap}
+              highlightedSlot={highlightedKey}
+              onShipped={() => void load()}
+            />
           ) : building === "B" ? (
-            <BBuildingView equipMap={equipMap} highlightedSlot={highlightedKey} onShipped={() => void load()} />
+            <BBuildingView
+              equipMap={equipMap}
+              highlightedSlot={highlightedKey}
+              onShipped={() => void load()}
+            />
           ) : building === "I" ? (
-            <IBuildingView equipMap={equipMap} highlightedSlot={highlightedKey} onShipped={() => void load()} />
+            <IBuildingView
+              equipMap={equipMap}
+              highlightedSlot={highlightedKey}
+              onShipped={() => void load()}
+            />
           ) : building === "WAIT" ? (
             <LineWaitingView
               equipMap={equipMap}

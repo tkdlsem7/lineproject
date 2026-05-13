@@ -181,7 +181,9 @@ function LineSection({
                     progress={row.progress ?? 0}
                     shipDate={row.shipping_date ?? null}
                     manager={row.manager ?? null}
-                    slotCode={row.slot_code} // ✅ 실제 slot_code
+                    improvementStatus={row.improvement_status}
+                    remodelProgressStatus={row.remodel_progress_status}
+                    slotCode={row.slot_code}
                     sizeClass={`${TILE_W} ${TILE_H}`}
                     isOpen={isOpen}
                     onToggleMenu={() => onToggleMenu(row.slot_code)}

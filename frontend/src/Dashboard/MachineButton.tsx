@@ -1,6 +1,10 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { shipEquipment } from "./DashboardHandler";
+import {
+  shipEquipment,
+  type ImprovementStatus,
+  type RemodelProgressStatus,
+} from "./DashboardHandler";
 
 const colorByProgress = (p: number) => {
   if (p >= 100) return "bg-green-600 text-white";
@@ -9,12 +13,61 @@ const colorByProgress = (p: number) => {
   return "bg-gray-300 text-gray-700";
 };
 
+const STATUS_BOX_SIZE = "h-6 w-6";
+
+const colorByImprovementStatus = (v?: ImprovementStatus) => {
+  switch (v) {
+    case "need":
+      return "bg-rose-500";
+    case "done":
+      return "bg-emerald-500";
+    default:
+      return "bg-black";
+  }
+};
+
+const colorByRemodelProgressStatus = (v?: RemodelProgressStatus) => {
+  switch (v) {
+    case "planned":
+      return "bg-slate-400";
+    case "completed":
+      return "bg-blue-500";
+    case "io_done":
+      return "bg-violet-500";
+    default:
+      return "bg-black";
+  }
+};
+
+const improvementLabel = (v?: ImprovementStatus) => {
+  switch (v) {
+    case "need":
+      return "개선품 적용 필요";
+    case "done":
+      return "개선품 적용 완료";
+    default:
+      return "개선품 적용 상태 없음";
+  }
+};
+
+const remodelProgressLabel = (v?: RemodelProgressStatus) => {
+  switch (v) {
+    case "planned":
+      return "개조 진행 예정";
+    case "completed":
+      return "개조 완료";
+    case "io_done":
+      return "IO 완료";
+    default:
+      return "개조 진행 상태 없음";
+  }
+};
+
 const LS = {
   SELECTED_IS_EMPTY: "selected_machine_is_empty",
   SELECTED_ID: "selected_machine_id",
   SELECTED_AT: "selected_machine_saved_at",
 
-  // ✅ 장비정보 페이지에서 slot/site를 읽는 키들
   SELECTED_SLOT: "selected_slot",
   SELECTED_SITE: "selected_site",
 
@@ -34,7 +87,7 @@ type InfoIntentV2 = {
     manager: string | null;
     customer: string | null;
     serialNumber: string | null;
-    chillerSerialNumber: string | null; // ✅ 핵심(장비정보 페이지에서 쓰기 쉽게 camelCase)
+    chillerSerialNumber: string | null;
     note: string | null;
     status: "가능" | "불가능" | null;
   };
@@ -52,6 +105,10 @@ type Props = {
   sizeClass?: string;
   className?: string;
 
+  // ✅ 새로 추가
+  improvementStatus?: ImprovementStatus;
+  remodelProgressStatus?: RemodelProgressStatus;
+
   userAuth?: number | null;
 
   isOpen?: boolean;
@@ -60,6 +117,7 @@ type Props = {
   onOpenChecklist?: (machineId: string) => void;
   onOpenMove?: (machineId: string) => void;
   onOpenRowdata?: (machineId: string) => void;
+  onOpenRemodel?: (machineId: string) => void;
 
   onShipped?: (slotCode: string) => void;
 };
@@ -100,7 +158,6 @@ const authHeaders = (): Record<string, string> => {
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
-// ✅ /api 우선 + 폴백 URL들로 detail 조회
 async function fetchEquipmentDetailBySlot(site: string | null, slotCode: string) {
   const s = (site ?? "").trim();
   const sc = (slotCode ?? "").trim().toUpperCase();
@@ -112,8 +169,8 @@ async function fetchEquipmentDetailBySlot(site: string | null, slotCode: string)
   const path = `/dashboard/equipment/detail?${qs}`;
   const candidates = Array.from(
     new Set([
-      `/api${path}`, // 1순위
-      path,          // 리버스 프록시 환경 폴백
+      `/api${path}`,
+      path,
     ])
   );
 
@@ -141,14 +198,16 @@ export default function MachineButton({
   slotCode,
   sizeClass = "w-[220px] h-[120px]",
   className = "",
+  improvementStatus,
+  remodelProgressStatus,
   userAuth,
-
   isOpen,
   onToggleMenu,
   onOpenInfo,
   onOpenChecklist,
   onOpenMove,
   onOpenRowdata,
+  onOpenRemodel,
   onShipped,
 }: Props) {
   const navigate = useNavigate();
@@ -188,7 +247,8 @@ export default function MachineButton({
 
     if (fromStorage !== null) return fromStorage;
 
-    const tokenRaw = localStorage.getItem("access_token") || sessionStorage.getItem("access_token");
+    const tokenRaw =
+      localStorage.getItem("access_token") || sessionStorage.getItem("access_token");
     return pickAuthFromJwt(tokenRaw);
   }, [userAuth]);
 
@@ -220,11 +280,8 @@ export default function MachineButton({
       localStorage.setItem(LS.SELECTED_IS_EMPTY, "0");
       localStorage.setItem(LS.SELECTED_ID, machineId);
       localStorage.setItem(LS.SELECTED_AT, new Date().toISOString());
-
-      // ✅ 추가: 장비정보 페이지가 slot/site로 진입할 수 있게 저장
       localStorage.setItem(LS.SELECTED_SLOT, String(slotCode ?? "").toUpperCase());
 
-      // site는 DashboardMain이 계속 덮어쓰고 있지만, 혹시 없으면 현재값 유지
       const curSite = localStorage.getItem(LS.SELECTED_SITE);
       if (!curSite) localStorage.setItem(LS.SELECTED_SITE, "");
     } catch {}
@@ -281,11 +338,9 @@ export default function MachineButton({
     try {
       storeSelection(title);
 
-      // 1) 우선 기본 intent 저장(즉시 프리필 가능)
       const base = buildBaseIntent();
       storeInfoIntent(base);
 
-      // 2) 서버에서 최신값(특히 chiller_serial_number) 가져와서 intent 보강
       const site = (localStorage.getItem(LS.SELECTED_SITE) ?? "").trim() || null;
       const detail = await fetchEquipmentDetailBySlot(site, slotCode);
 
@@ -301,18 +356,28 @@ export default function MachineButton({
             chillerSerialNumber: detail.chiller_serial_number ?? null,
             note: detail.note ?? null,
             status:
-              detail.status === "가능" ? "가능" : detail.status === "불가능" ? "불가능" : null,
+              detail.status === "가능"
+                ? "가능"
+                : detail.status === "불가능"
+                  ? "불가능"
+                  : null,
           },
           setAt: new Date().toISOString(),
         };
         storeInfoIntent(patched);
       }
     } catch {
-      // 실패해도 페이지 이동은 진행(최소한 base intent는 저장됨)
+      // 실패해도 페이지 이동은 진행
     }
 
     closeMenu();
-    onOpenInfo?.();
+
+    if (onOpenInfo) {
+      onOpenInfo();
+      return;
+    }
+
+    navigate("/equipment");
   };
 
   const handleOpenChecklist = () => {
@@ -346,6 +411,25 @@ export default function MachineButton({
     navigate("/SetupDefectEntryPage");
   };
 
+  const handleOpenRemodel = () => {
+    if (!guardMenuAction()) return;
+
+    try {
+      storeSelection(title);
+      const base = buildBaseIntent();
+      storeInfoIntent(base);
+    } catch {}
+
+    closeMenu();
+
+    if (onOpenRemodel) {
+      onOpenRemodel(title);
+      return;
+    }
+
+    navigate("/equipment-remodel");
+  };
+
   const handleShip = async () => {
     if (!guardMenuAction()) return;
 
@@ -368,6 +452,7 @@ export default function MachineButton({
   const menuItems = [
     { label: "🧾 Rowdata 입력", onClick: handleOpenRowdata },
     { label: "🛠 장비 정보 입력", onClick: handleOpenInfo },
+    { label: "🧩 장비 개조 입력", onClick: handleOpenRemodel },
     { label: "✅ 체크리스트", onClick: handleOpenChecklist },
     { label: "🔁 장비 이동", onClick: handleOpenMove },
     { label: "🚚 출하 처리", onClick: handleShip },
@@ -376,6 +461,8 @@ export default function MachineButton({
   return (
     <div
       data-card-root="1"
+      data-slot-code={String(slotCode ?? "").toUpperCase()}
+      data-machine-id={String(title ?? "").toLowerCase()}
       className={`relative ${sizeClass} rounded-2xl px-4 py-3 shadow-md ${colorByProgress(
         progress
       )} ${className}`}
@@ -384,7 +471,28 @@ export default function MachineButton({
       onPointerDown={stopAll}
       onClick={handleClick}
     >
-      <div className="text-base sm:text-lg font-extrabold leading-6">{title || "-"}</div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 text-base sm:text-lg font-extrabold leading-6">
+          {title || "-"}
+        </div>
+
+        <div className="flex shrink-0 items-start gap-1.5">
+          <div
+            className={`${STATUS_BOX_SIZE} rounded-sm border border-white/40 ${colorByImprovementStatus(
+              improvementStatus
+            )}`}
+            aria-label={improvementLabel(improvementStatus)}
+            title={improvementLabel(improvementStatus)}
+          />
+          <div
+            className={`${STATUS_BOX_SIZE} rounded-sm border border-white/40 ${colorByRemodelProgressStatus(
+              remodelProgressStatus
+            )}`}
+            aria-label={remodelProgressLabel(remodelProgressStatus)}
+            title={remodelProgressLabel(remodelProgressStatus)}
+          />
+        </div>
+      </div>
 
       <div className="mt-1 text-[12px] sm:text-[13px] leading-5 opacity-95">
         <div>진척도: {Number.isFinite(progress) ? `${progress}%` : "-"}</div>

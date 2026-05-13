@@ -36,8 +36,9 @@ const authHeaders = (): Record<string, string> => {
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
-// -------------------- 타입 --------------------
 export type SlotStatus = "가능" | "불가능" | null;
+export type ImprovementStatus = "need" | "done" | null;
+export type RemodelProgressStatus = "planned" | "completed" | "io_done" | null;
 
 export type SlotRow = {
   id: string;
@@ -50,26 +51,42 @@ export type SlotRow = {
 
   customer: string | null;
   serial_number: string | null;
-
-  // ✅ 추가
   chiller_serial_number: string | null;
 
   note: string | null;
   status: SlotStatus;
+
+  // ✅ equipment_remodel 에서 내려주는 상태
+  improvement_status: ImprovementStatus;
+  remodel_progress_status: RemodelProgressStatus;
 };
 
-// -------------------- 노멀라이저 --------------------
 const toDateString = (v: any): string | null => {
   if (!v) return null;
   const s = String(v);
   return s.length >= 10 ? s.slice(0, 10) : s;
 };
 
-const normalizeSlotRow = (raw: any): SlotRow => {
-  const statusRaw = raw?.status;
-  const status: SlotStatus =
-    statusRaw === "가능" ? "가능" : statusRaw === "불가능" ? "불가능" : null;
+const normalizeStatus = (v: any): SlotStatus => {
+  if (v === "가능") return "가능";
+  if (v === "불가능") return "불가능";
+  return null;
+};
 
+const normalizeImprovementStatus = (v: any): ImprovementStatus => {
+  if (v === "need") return "need";
+  if (v === "done") return "done";
+  return null;
+};
+
+const normalizeRemodelProgressStatus = (v: any): RemodelProgressStatus => {
+  if (v === "planned") return "planned";
+  if (v === "completed") return "completed";
+  if (v === "io_done") return "io_done";
+  return null;
+};
+
+const normalizeSlotRow = (raw: any): SlotRow => {
   const progressNum = Number(raw?.progress);
   const progress = Number.isFinite(progressNum) ? progressNum : 0;
 
@@ -84,17 +101,20 @@ const normalizeSlotRow = (raw: any): SlotRow => {
 
     customer: raw?.customer ?? null,
     serial_number: raw?.serial_number ?? null,
-
-    // ✅ 추가
     chiller_serial_number: raw?.chiller_serial_number ?? null,
 
     note: raw?.note ?? null,
-    status,
+    status: normalizeStatus(raw?.status),
+
+    improvement_status: normalizeImprovementStatus(raw?.improvement_status),
+    remodel_progress_status: normalizeRemodelProgressStatus(raw?.remodel_progress_status),
   };
 };
 
-// -------------------- API --------------------
-export async function fetchSlots(opts: { site: string; building: "A" | "B" | "I" }): Promise<SlotRow[]> {
+export async function fetchSlots(opts: {
+  site: string;
+  building: "A" | "B" | "I" | "JIN";
+}): Promise<SlotRow[]> {
   const qs = new URLSearchParams({ site: opts.site, building: opts.building }).toString();
   const path = `/dashboard/slots?${qs}`;
 

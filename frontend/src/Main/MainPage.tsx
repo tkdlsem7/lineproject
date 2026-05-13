@@ -5,7 +5,8 @@ import axios from "axios";
 import { useAuth } from "../lib/AuthContext"; // ✅ 전역 auth/이름 가져오기
 
 // CRA/Vite 공용: 환경변수 → 없으면 '/api'
-const API_BASE = "http://192.168.101.1:8000/api";
+export const API_BASE =
+  process.env.NODE_ENV === "production" ? "/api" : "http://192.168.101.1:8000/api";
 
 /* ---------- 타입 ---------- */
 type Building = { used: number; capacity: number; remaining: number };
@@ -63,6 +64,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
   const ROUTE_BOARD = "/board";
   const ROUTE_LOG_TABLE = "/logs/table";
   const ROUTE_LOG_CHART = "/log/charts";
+  const ROUTE_REMODEL_LOG = "/log/remodel";
   const ROUTE_MACHINE_MOVING = "/machine-move";
   const ROUTE_CALENDAR = "/calendar";
   const ROUTE_ATTENDANCE = "/attendance";
@@ -92,6 +94,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
         label: "로그/분석",
         items: [
           { label: "Log Charts", desc: "차트/지표", to: ROUTE_LOG_CHART },
+          { label: "장비 개조 로그", desc: "개조 분석 시안", to: ROUTE_REMODEL_LOG },
           { label: "Log Table", desc: "테이블 조회", to: ROUTE_LOG_TABLE },
         ],
       },
@@ -131,6 +134,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
       ROUTE_LINE_ACCESS,
       ROUTE_LOG_CHART,
       ROUTE_LOG_TABLE,
+      ROUTE_REMODEL_LOG,
       ROUTE_MACHINE_MOVING,
       ROUTE_OPTIONS,
       ROUTE_ROW,
@@ -685,6 +689,14 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
                     type="button"
                   >
                     출근 기록
+                  </button>
+
+                  <button
+                    onClick={() => navigate(ROUTE_REMODEL_LOG)}
+                    className="rounded-full bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
+                    type="button"
+                  >
+                    장비 개조 로그
                   </button>
 
                   <button

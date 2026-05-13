@@ -1,4 +1,3 @@
-// App.tsx
 import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
@@ -8,6 +7,7 @@ import OptionConfigPage from "./Option/OptionConfigPage";
 import ModifyOptionsPage from "./Option/ModifyOptionsPage";
 import DashboardMain from "./Dashboard/DashboardMain";
 import EquipmentInfoPage from "./Equipment Information/EquipmentInfoPage";
+import EquipmentRemodelPage from "./Equipment Information/EquipmentRemodelPage";
 import ProgressChecklistPage from "./Progress Checklist/ProgressChecklistPage";
 import MoveEquipmentPage from "./MachineMoving/MoveEquipmentPage";
 import TroubleShootPage from "./Troubleshoot/TroubleShootPage";
@@ -25,25 +25,22 @@ import BoardDetailPage from "./Board/BoardDetailPage";
 
 import LogTableBrowser from "./logtable/LogTableBrowser";
 import LogChartPage from "./LogChart/LogChartPage";
-import EquipmentGanttPage from "./Calender/EquipmentGanttPage";
+import EquipmentRemodelLogPage from "./LogChart/EquipmentRemodelLogPage";
+import EquipmentRemodelManagePage from "./LogChart/EquipmentRemodelManagePage";
 
-import EquipmentCalendarPage from "./Calender/EquipmentCalendarPage";
+import EquipmentScheduleDetailPage from "./Calender/EquipmentScheduleDetailPage";
+import EquipmentSchedulePage from "./Calender/EquipmentSchedulePage";
 import CalendarExcelUploadPage from "./Calender/ScheduleExcelUploadPage";
+import ScheduleBatchHistoryPage from "./Calender/ScheduleBatchHistoryPage";
 
-// ✅ 회원정보 수정 페이지 (이미 만들어둔 파일 경로에 맞춰 수정)
 import UserEditPage from "./Login/UserEditPage";
 
-// ✅ 토큰만 확인하는 최소 가드
 const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const token =
     localStorage.getItem("access_token") || sessionStorage.getItem("access_token");
   const location = useLocation();
 
   if (!token) {
-    // ✅ 핵심 수정:
-    // /account/edit로 가려다 로그인 페이지로 튕겼을 때,
-    // redirect=/account/edit 를 붙이면 로그인 직후 다시 /account/edit로 가버림.
-    // 그래서 이 경우에는 redirect 파라미터를 붙이지 않음 → 로그인 후 기본(/main)으로 감.
     if (location.pathname === "/account/edit") {
       return <Navigate to="/" replace />;
     }
@@ -60,20 +57,25 @@ const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) =
 };
 
 const getUserName = () => {
-  const n = localStorage.getItem("user_name");
+  const n =
+    localStorage.getItem("user_name") || sessionStorage.getItem("user_name");
   return n && n.trim() ? n : "조성국";
 };
 
 export default function App() {
   return (
     <Routes>
-      {/* 로그인 */}
       <Route path="/" element={<LoginForm />} />
 
-      {/* 메인 (원하면 RequireAuth로 감싸도 됨) */}
-      <Route path="/main" element={<MainPage userName={getUserName()} />} />
+      <Route
+        path="/main"
+        element={
+          <RequireAuth>
+            <MainPage userName={getUserName()} />
+          </RequireAuth>
+        }
+      />
 
-      {/* ✅ 회원정보 수정: 로그인 후 메인에서 버튼 눌러서만 들어가게 유지 */}
       <Route
         path="/account/edit"
         element={
@@ -110,20 +112,86 @@ export default function App() {
         }
       />
 
-      <Route path="/equipment" element={<EquipmentInfoPage />} />
-      <Route path="/progress-checklist" element={<ProgressChecklistPage />} />
-      <Route path="/machine-move" element={<MoveEquipmentPage />} />
-      <Route path="/troubleshoot" element={<TroubleShootPage />} />
-      <Route path="/SetupDefectEntryPage" element={<SetupDefectEntryPages />} />
-      <Route path="/SetupDefectEntryPage/manage" element={<SetupDefectManagePage />} />
+      <Route
+        path="/equipment"
+        element={
+          <RequireAuth>
+            <EquipmentInfoPage />
+          </RequireAuth>
+        }
+      />
 
-      <Route path="/board" element={<BoardPage />} />
-      <Route path="/board/:no" element={<BoardDetailPage />} />
-      <Route path="/logs/table" element={<LogTableBrowser />} />
-      <Route path="/log/charts" element={<LogChartPage />} />
-      <Route path="/gantt" element={<EquipmentGanttPage />} />
-      <Route path="/line-access/logs" element={<LineAccessLogsPage />} />
-      <Route path="/defect-catalog" element={<DefectCatalogPage />} />
+      <Route
+        path="/equipment-remodel"
+        element={
+          <RequireAuth>
+            <EquipmentRemodelPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/progress-checklist"
+        element={
+          <RequireAuth>
+            <ProgressChecklistPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/machine-move"
+        element={
+          <RequireAuth>
+            <MoveEquipmentPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/troubleshoot"
+        element={
+          <RequireAuth>
+            <TroubleShootPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/SetupDefectEntryPage"
+        element={
+          <RequireAuth>
+            <SetupDefectEntryPages />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/SetupDefectEntryPage/manage"
+        element={
+          <RequireAuth>
+            <SetupDefectManagePage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/board"
+        element={
+          <RequireAuth>
+            <BoardPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/board/:no"
+        element={
+          <RequireAuth>
+            <BoardDetailPage />
+          </RequireAuth>
+        }
+      />
 
       <Route
         path="/board/new"
@@ -144,19 +212,55 @@ export default function App() {
       />
 
       <Route
-        path="/calendar"
+        path="/logs/table"
         element={
           <RequireAuth>
-            <EquipmentCalendarPage />
+            <LogTableBrowser />
           </RequireAuth>
         }
       />
 
       <Route
-        path="/calendar/upload"
+        path="/log/charts"
         element={
           <RequireAuth>
-            <CalendarExcelUploadPage />
+            <LogChartPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/log/remodel"
+        element={
+          <RequireAuth>
+            <EquipmentRemodelLogPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/log/remodel/manage"
+        element={
+          <RequireAuth>
+            <EquipmentRemodelManagePage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/line-access/logs"
+        element={
+          <RequireAuth>
+            <LineAccessLogsPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/defect-catalog"
+        element={
+          <RequireAuth>
+            <DefectCatalogPage />
           </RequireAuth>
         }
       />
@@ -177,6 +281,54 @@ export default function App() {
             <LineAccessCurrentPage />
           </RequireAuth>
         }
+      />
+
+      {/* 일정 관련 */}
+      <Route
+        path="/calendar"
+        element={<Navigate to="/equipment-schedule" replace />}
+      />
+
+      <Route
+        path="/calendar/upload"
+        element={
+          <RequireAuth>
+            <CalendarExcelUploadPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/equipment-schedule"
+        element={
+          <RequireAuth>
+            <EquipmentSchedulePage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/equipment-schedule/:equipmentId"
+        element={<EquipmentScheduleDetailPage />}
+      />
+
+      <Route
+        path="/schedule-batch-history"
+        element={
+          <RequireAuth>
+            <ScheduleBatchHistoryPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/calendar/batch-history"
+        element={<Navigate to="/schedule-batch-history" replace />}
+      />
+
+      <Route
+        path="/gantt"
+        element={<Navigate to="/equipment-schedule" replace />}
       />
 
       <Route path="/BoardPage" element={<Navigate to="/board" replace />} />

@@ -1,7 +1,8 @@
 # Dashboard/routers.py
 from __future__ import annotations
+
 from datetime import date as _date
-from typing import List, Iterable, Optional
+from typing import Dict, Iterable, List, Optional
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -14,6 +15,7 @@ from .models import (
     EquipmentLog,
     EquipmentMoveLog,
     EquipmentShipmentLog,
+    EquipmentRemodel,
 )
 from .schemas import SlotOut, MoveRequest, OK
 
@@ -65,6 +67,36 @@ def _resolve_src_row(db: Session, slot_code: str) -> Optional[EquipProgress]:
     return db.query(EquipProgress).filter(EquipProgress.slot_code == slot_code).first()
 
 
+def _build_remodel_map(db: Session, rows: List[EquipProgress]) -> Dict[str, EquipmentRemodel]:
+    machine_ids = sorted(
+        {
+            (r.machine_id or "").strip()
+            for r in rows
+            if (r.machine_id or "").strip()
+        }
+    )
+    if not machine_ids:
+        return {}
+
+    stmt = (
+        select(EquipmentRemodel)
+        .where(EquipmentRemodel.machine_id.in_(machine_ids))
+        .order_by(
+            EquipmentRemodel.machine_id.asc(),
+            EquipmentRemodel.updated_at.desc(),
+            EquipmentRemodel.id.desc(),
+        )
+    )
+
+    latest_by_machine: Dict[str, EquipmentRemodel] = {}
+    for item in db.execute(stmt).scalars().all():
+        key = (item.machine_id or "").strip().lower()
+        if key and key not in latest_by_machine:
+            latest_by_machine[key] = item
+
+    return latest_by_machine
+
+
 @router.get("/slots", response_model=List[SlotOut])
 def list_slots(
     db: Session = Depends(get_db),
@@ -90,6 +122,8 @@ def list_slots(
     else:
         rows.sort(key=lambda r: _sort_key(r.slot_code))
 
+    remodel_map = _build_remodel_map(db, rows)
+
     return [
         SlotOut(
             id=r.slot_code,
@@ -101,12 +135,19 @@ def list_slots(
             site=r.site,
             customer=getattr(r, "customer", None),
             serial_number=getattr(r, "serial_number", None),
-
-            # ✅ 추가
             chiller_serial_number=getattr(r, "chiller_serial_number", None),
-
             note=getattr(r, "note", None),
             status=getattr(r, "status", None),
+            improvement_status=(
+                getattr(remodel_map.get((r.machine_id or "").strip().lower()), "improvement_status", None)
+                if (r.machine_id or "").strip()
+                else None
+            ),
+            remodel_progress_status=(
+                getattr(remodel_map.get((r.machine_id or "").strip().lower()), "remodel_progress_status", None)
+                if (r.machine_id or "").strip()
+                else None
+            ),
         )
         for r in rows
     ]
@@ -123,8 +164,6 @@ def ship_equipment(
         raise HTTPException(status_code=404, detail="슬롯/장비를 찾을 수 없습니다.")
     if not row.machine_id or not row.machine_id.strip():
         raise HTTPException(status_code=400, detail="빈 슬롯은 출하 처리할 수 없습니다.")
-    if (row.status or "").strip() != "가능":
-        raise HTTPException(status_code=400, detail='status가 "가능일 때만 출하 가능합니다')
 
     db.add(
         EquipmentShipmentLog(
@@ -166,7 +205,6 @@ def move_equipment(
     if not _is_empty(dst.machine_id):
         raise HTTPException(status_code=400, detail="대상 슬롯이 비어있지 않습니다.")
 
-    # 이동: 대상에 정보 복사
     dst.machine_id = src.machine_id
     dst.manager = src.manager
     dst.progress = src.progress
@@ -176,17 +214,13 @@ def move_equipment(
         dst.customer = getattr(src, "customer", None)
     if hasattr(dst, "serial_number") and hasattr(src, "serial_number"):
         dst.serial_number = getattr(src, "serial_number", None)
-
-    # ✅ 추가: 칠러 시리얼
     if hasattr(dst, "chiller_serial_number") and hasattr(src, "chiller_serial_number"):
         dst.chiller_serial_number = getattr(src, "chiller_serial_number", None)
-
     if hasattr(dst, "note") and hasattr(src, "note"):
         dst.note = getattr(src, "note", None)
     if hasattr(dst, "status") and hasattr(src, "status"):
         dst.status = getattr(src, "status", None)
 
-    # 원본 초기화
     src.machine_id = None
     src.manager = None
     src.progress = 0
@@ -196,11 +230,8 @@ def move_equipment(
         src.customer = None
     if hasattr(src, "serial_number"):
         src.serial_number = None
-
-    # ✅ 추가: 칠러 시리얼 초기화
     if hasattr(src, "chiller_serial_number"):
         src.chiller_serial_number = None
-
     if hasattr(src, "note"):
         src.note = None
     if hasattr(src, "status"):
