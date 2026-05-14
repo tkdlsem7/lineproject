@@ -119,7 +119,20 @@ def on_startup() -> None:
         LoginBase.metadata.create_all(bind=engine)
         DBBase.metadata.create_all(bind=engine)
 
-        log.info("✅ Startup OK: DB connected and tables checked.")
+        # 가벼운 in-place 마이그레이션 (PostgreSQL)
+        # create_all 은 새 컬럼을 추가해 주지 않으므로,
+        # 필요한 컬럼만 IF NOT EXISTS 로 안전하게 보장한다.
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "ALTER TABLE IF EXISTS equipment_master "
+                "ADD COLUMN IF NOT EXISTS manager TEXT"
+            )
+            conn.exec_driver_sql(
+                "ALTER TABLE IF EXISTS equipment_master "
+                "ADD COLUMN IF NOT EXISTS chiller_sn TEXT"
+            )
+
+        log.info("Startup OK: DB connected and tables checked.")
     except Exception:
-        log.exception("❌ Startup failed (DB/init). Check DATABASE_URL & Postgres status.")
+        log.exception("Startup failed (DB/init). Check DATABASE_URL & Postgres status.")
         raise

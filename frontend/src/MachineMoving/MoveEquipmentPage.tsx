@@ -12,9 +12,8 @@ type EquipmentRow = {
 };
 
 // 프로젝트 설정에 따라 /api 프리픽스를 사용하지 않으면 "" 로 변경
-const API_BASE = "http://192.168.101.1:8000/api";
-
-
+const API_BASE =
+  process.env.NODE_ENV === "production" ? "/api" : "http://192.168.101.1:8000/api";
 // 요구: 사이트는 3개 고정
 const SITES = ["본사", "진우리", "라인대기"] as const;
 
@@ -335,6 +334,161 @@ const MoveEquipmentPage: React.FC = () => {
   const warnNotImplemented = (what: string) =>
     alert(`${what} 기능은 추후 제공될 예정입니다.`);
 
+  // ──────────────────────────────────────────────
+  // ✅ 메신저 붙여넣기 → 자동 라인 이동
+  //   1) 미리보기: 백엔드 /move/paste-parse 호출 → 행별 상태 alert
+  //   2) 적용: 파싱 결과 중 status==='ok' 만 모아서 /move/apply 호출
+  //   - 슬롯 형식 변환(B-08 → B8 등)은 백엔드가 알아서 처리
+  // ──────────────────────────────────────────────
+  type ParsedRow = {
+    raw: string;
+    machine_id: string;
+    from_site: string;
+    to_site: string;
+    from_slot: string;
+    to_slot: string;
+    status: "ok" | "not_found" | "conflict" | "skip" | "error";
+    message: string;
+  };
+
+  type ParseResp = {
+    from_site: string;
+    to_site: string;
+    ok: number;
+    not_found: number;
+    conflict: number;
+    items: ParsedRow[];
+  };
+
+  const [pasteSaving, setPasteSaving] = React.useState(false);
+
+  const parsePasteText = async (): Promise<ParseResp | null> => {
+    const text = (pasteText || "").trim();
+    if (!text) {
+      alert("붙여넣기 영역에 라인이동 글을 먼저 입력해주세요.");
+      return null;
+    }
+    try {
+      const { data } = await axios.post<ParseResp>(
+        `${API_BASE}/move/paste-parse`,
+        { text },
+        {
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          withCredentials: true,
+        }
+      );
+      return data;
+    } catch (e: any) {
+      console.error("[paste-parse] error", e);
+      alert(
+        e?.response?.data?.detail ??
+          "붙여넣기 파싱 중 오류가 발생했습니다."
+      );
+      return null;
+    }
+  };
+
+  const handlePastePreview = async () => {
+    const data = await parsePasteText();
+    if (!data) return;
+
+    const lines: string[] = [];
+    lines.push(`방향: ${data.from_site} → ${data.to_site}`);
+    lines.push(
+      `이동 가능 ${data.ok}건 / 충돌 ${data.conflict}건 / 미발견 ${data.not_found}건`
+    );
+    lines.push("");
+
+    const showRows = data.items.filter((r) => r.status !== "skip");
+    for (const r of showRows) {
+      const tag =
+        r.status === "ok"
+          ? "✅"
+          : r.status === "conflict"
+            ? "⚠️ "
+            : r.status === "not_found"
+              ? "❌"
+              : "·";
+      lines.push(
+        `${tag} ${r.machine_id || "?"}  ${r.from_site}/${r.from_slot || "-"} → ${
+          r.to_site
+        }/${r.to_slot || "-"}` + (r.message ? `  (${r.message})` : "")
+      );
+    }
+    alert(lines.join("\n"));
+  };
+
+  const handlePasteApply = async () => {
+    const data = await parsePasteText();
+    if (!data) return;
+
+    const okItems = data.items.filter((r) => r.status === "ok");
+    if (okItems.length === 0) {
+      alert("적용 가능한 행이 없습니다. (미리보기로 충돌/미발견 항목을 먼저 확인하세요)");
+      return;
+    }
+
+    const confirmMsg =
+      `방향: ${data.from_site} → ${data.to_site}\n` +
+      `즉시 적용할 이동 건수: ${okItems.length}건\n` +
+      (data.conflict ? `충돌 ${data.conflict}건은 자동 스킵됩니다.\n` : "") +
+      (data.not_found ? `미발견 ${data.not_found}건은 자동 스킵됩니다.\n` : "") +
+      `\n이대로 적용할까요?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const payload = {
+      items: okItems.map((r) => ({
+        machine_id: r.machine_id,
+        to_site: r.to_site,
+        to_slot: r.to_slot,
+      })),
+    };
+
+    try {
+      setPasteSaving(true);
+      await axios.post(`${API_BASE}/move/apply`, payload, {
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        withCredentials: true,
+      });
+      alert(`라인 이동이 적용되었습니다. (${okItems.length}건)`);
+
+      // 현재 사이트 목록 새로고침
+      try {
+        const { data: refreshed } = await axios.get<{
+          site: string;
+          items: EquipmentRow[];
+        }>(`${API_BASE}/move/equipments`, {
+          params: { site },
+          withCredentials: true,
+          headers: { ...authHeaders() },
+        });
+        setRows(refreshed.items ?? []);
+        setChecked({});
+        setMovePlan({});
+        setPasteText("");
+      } catch {
+        // 목록 새로고침 실패는 무시 (이동은 성공)
+      }
+    } catch (e: any) {
+      const resp = e?.response;
+      if (resp?.status === 409 && Array.isArray(resp?.data?.conflicts)) {
+        const conflictsArr: any[] = resp.data.conflicts;
+        const lines = conflictsArr.map(
+          (c) =>
+            `- ${c.site} / ${c.slot} 슬롯은 이미 ${c.current_machine_id} 점유 중`
+        );
+        alert(`이동 불가 슬롯이 있어 적용을 중단했습니다:\n${lines.join("\n")}`);
+      } else {
+        console.error("[paste-apply] error", e);
+        alert(
+          resp?.data?.detail ?? "라인 이동 적용 중 오류가 발생했습니다."
+        );
+      }
+    } finally {
+      setPasteSaving(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-6">
       <div className="mx-auto w-full max-w-7xl space-y-6">
@@ -560,41 +714,59 @@ const MoveEquipmentPage: React.FC = () => {
           </Shell>
         </div>
 
-        {/* 붙여넣기(디자인만) */}
+        {/* ✅ 메신저 붙여넣기 → 자동 라인 이동 */}
         <Shell header="메신저 붙여넣기(빠른 이동)">
           <div className="space-y-3 px-5 pt-4">
             <textarea
               value={pasteText}
               onChange={(e) => setPasteText(e.target.value)}
-              placeholder={`예)\n2025.10.14 라인이동 현황 공유드립니다.\n\n진우리 -> 본사라인\n\nD(e)-11-06  G-01\nD(e)-11-07  G-04\nH(e)-09-03  B-06\n...`}
+              placeholder={`예)\n2026.05.13(수) 라인 이동 현황 공유드립니다.\n\n진우리 → 본사 라인\n\nI-15-15  G-03\nI-15-16  G-08\nI-15-17  H-08\nI-15-18  H-14\nI-15-19  H-16\n...`}
               className="w-full h-44 rounded-xl border border-slate-200 p-3 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
             />
             <div className="flex items-center justify-end gap-2">
               <button
-                onClick={() => warnNotImplemented("미리보기")}
-                className="rounded-full px-4 py-1.5 text-sm font-semibold bg-gray-300 text-gray-600 cursor-not-allowed"
-                title="추후 제공 예정"
+                type="button"
+                onClick={handlePastePreview}
+                disabled={pasteSaving || !pasteText.trim()}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold shadow-sm ${
+                  pasteSaving || !pasteText.trim()
+                    ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                    : "bg-slate-600 text-white hover:bg-slate-700"
+                }`}
+                title="DB에 적용하지 않고 어떤 이동이 일어날지 확인합니다."
               >
                 미리보기
               </button>
               <button
-                onClick={() => warnNotImplemented("적용")}
-                className="rounded-full px-4 py-1.5 text-sm font-semibold bg-gray-300 text-gray-600 cursor-not-allowed"
-                title="추후 제공 예정"
+                type="button"
+                onClick={handlePasteApply}
+                disabled={pasteSaving || !pasteText.trim()}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold shadow-sm ${
+                  pasteSaving || !pasteText.trim()
+                    ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                    : "bg-orange-500 text-white hover:bg-orange-600"
+                }`}
+                title="파싱된 ok 행만 즉시 DB에 반영합니다. 충돌/미발견 건은 자동으로 스킵됩니다."
               >
-                적용
+                {pasteSaving ? "적용 중..." : "적용"}
               </button>
             </div>
           </div>
           <ul className="text-xs text-slate-500 space-y-1 px-5 pb-5">
             <li>
-              • 방향 줄은 반드시 포함: 예) <b>진우리 -&gt; 본사(라인)</b>
+              • 방향 줄 예: <b>진우리 → 본사 라인</b> (또는 <code>-&gt;</code>)
             </li>
             <li>
-              • 본문은 <code>D(e)-11-06&nbsp;&nbsp;G-01</code> 형식,{" "}
-              <code>(e)</code>는 자동 제거됩니다.
+              • 본문 형식: <code>호기번호&nbsp;&nbsp;목적지슬롯</code> · 예){" "}
+              <code>I-15-15&nbsp;&nbsp;G-03</code>
             </li>
-            <li>• 이 영역은 현재 디자인만 제공됩니다.</li>
+            <li>
+              • 슬롯은 자동 변환되어 DB에 <code>G3</code>,{" "}
+              <code>B8</code> 형태로 저장됩니다.
+            </li>
+            <li>
+              • 미리보기로 충돌/미발견 건을 먼저 확인하면 더 안전합니다.
+            </li>
           </ul>
         </Shell>
       </div>

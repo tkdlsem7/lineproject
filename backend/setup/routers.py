@@ -21,6 +21,9 @@ from .schemas import (
     SettingDatesRead,
 )
 
+# 생산일정 엑셀 동기화로 들어오는 새 테이블들 (setting_start / setting_end 이벤트가 여기 저장됨)
+from backend.Calender.models import EquipmentMaster, ScheduleEvent
+
 # ─────────────────────────────────────────
 # setup_sheet_all 라우터
 # ─────────────────────────────────────────
@@ -167,15 +170,22 @@ def get_setting_dates(
     db: Session = Depends(get_db),
 ):
     """
-    equipment_schedule에서
-    - machine_no 일치(대소문자 무시)
-    - note에 SETTING/세팅 포함(앞뒤 공백/다른 문구 섞여도 OK)
-    인 최신 1건의 start_date/end_date 반환
+    셋팅 시작일 / 종료일을 찾아서 돌려준다.
+
+    조회 우선순위:
+      1) equipment_schedule (구 테이블, note 에 'SETTING' / '세팅' 포함된 최신 1건)
+      2) schedule_events (신 테이블, 생산일정 엑셀 동기화로 들어온 데이터)
+         - event_type='setting_start'  → start_date
+         - event_type='setting_end'    → end_date
+         - 같은 호기 가장 최근 값 우선
+
+    둘 다 못 찾으면 404.
     """
     mn = machine_no.strip()
     if not mn:
         raise HTTPException(status_code=400, detail="machine_no is required")
 
+    # ── 1) 기존 로직: equipment_schedule 에서 찾아본다
     q = db.query(EquipmentSchedule).filter(
         func.lower(EquipmentSchedule.machine_no) == mn.lower()
     )
@@ -199,14 +209,47 @@ def get_setting_dates(
         order_by_cols.append(getattr(EquipmentSchedule, "id").desc())
 
     row = q.order_by(*order_by_cols).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="setting dates not found")
+    if row and (getattr(row, "start_date", None) or getattr(row, "end_date", None)):
+        return SettingDatesRead(
+            machine_no=row.machine_no,
+            start_date=getattr(row, "start_date", None),
+            end_date=getattr(row, "end_date", None),
+        )
 
-    return SettingDatesRead(
-        machine_no=row.machine_no,
-        start_date=getattr(row, "start_date", None),
-        end_date=getattr(row, "end_date", None),
+    # ── 2) 폴백: schedule_events (생산일정 엑셀 동기화로 들어오는 새 데이터)
+    master = (
+        db.query(EquipmentMaster)
+        .filter(func.lower(EquipmentMaster.machine_no) == mn.lower())
+        .first()
     )
+
+    if master:
+        start_row = (
+            db.query(ScheduleEvent.event_date)
+            .filter(ScheduleEvent.equipment_id == master.id)
+            .filter(ScheduleEvent.event_type == "setting_start")
+            .order_by(ScheduleEvent.event_date.desc(), ScheduleEvent.id.desc())
+            .first()
+        )
+        end_row = (
+            db.query(ScheduleEvent.event_date)
+            .filter(ScheduleEvent.equipment_id == master.id)
+            .filter(ScheduleEvent.event_type == "setting_end")
+            .order_by(ScheduleEvent.event_date.desc(), ScheduleEvent.id.desc())
+            .first()
+        )
+
+        start_date = start_row.event_date if start_row else None
+        end_date = end_row.event_date if end_row else None
+
+        if start_date or end_date:
+            return SettingDatesRead(
+                machine_no=master.machine_no,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    raise HTTPException(status_code=404, detail="setting dates not found")
 
 
 # ─────────────────────────────────────────

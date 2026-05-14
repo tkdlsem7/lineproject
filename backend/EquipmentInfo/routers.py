@@ -21,7 +21,12 @@ from .schemas import (
     EquipmentSaveRequest,
     EquipmentSaveResponse,
     EquipmentDetailOut,
+    EquipmentSyncInfoOut,
 )
+
+# 다른 모듈에서 동기화된 데이터를 읽기 위한 import
+from backend.Calender.models import EquipmentMaster, ScheduleEvent
+from backend.setup.models import SetupSheetAll
 
 router = APIRouter(
     prefix="/dashboard/equipment",
@@ -241,6 +246,99 @@ def get_equipment_detail(
         status=row.status,
         note=row.note,
         found_by=found_by,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 데이터 동기화 — 호기 번호 하나만 가지고 다른 테이블에서 정보를 끌어모은다.
+#   - serial_number          : equipment_master.stage_sn
+#   - chiller_serial_number  : setup_sheet_all.chiller_sn (가장 최근 row)
+#   - shipping_date          : schedule_events 중 출하요청 이벤트의 최신 event_date
+#   - manager                : equipment_master.manager
+#   - customer               : equipment_master.customer_name
+# 옵션/입고일은 별도 자동입력 흐름이 이미 있으므로 여기서는 건드리지 않는다.
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/sync-info", response_model=EquipmentSyncInfoOut)
+def get_sync_info(
+    machine_id: str = Query(..., min_length=1, max_length=40),
+    db: Session = Depends(get_db),
+):
+    mid = (machine_id or "").strip()
+    if not mid:
+        raise HTTPException(status_code=422, detail="machine_id 가 필요합니다.")
+
+    # 1) equipment_master 에서 같은 호기를 대소문자 무시로 조회
+    master = (
+        db.query(EquipmentMaster)
+        .filter(func.lower(EquipmentMaster.machine_no) == mid.lower())
+        .first()
+    )
+
+    serial_number: Optional[str] = None
+    customer: Optional[str] = None
+    manager: Optional[str] = None
+    shipping_date: Optional[_date] = None
+
+    chiller_serial_number: Optional[str] = None
+
+    if master:
+        if master.stage_sn and master.stage_sn.strip():
+            serial_number = master.stage_sn.strip()
+        if master.customer_name and master.customer_name.strip():
+            customer = master.customer_name.strip()
+        # manager / chiller_sn 컬럼은 최근에 추가된 컬럼이라 getattr 로 안전하게 접근
+        mgr_val = getattr(master, "manager", None)
+        if mgr_val and str(mgr_val).strip():
+            manager = str(mgr_val).strip()
+
+        ch_val = getattr(master, "chiller_sn", None)
+        if ch_val and str(ch_val).strip():
+            chiller_serial_number = str(ch_val).strip()
+
+        # 2) 출하요청 이벤트 중 가장 최근 날짜
+        ev = (
+            db.query(ScheduleEvent.event_date)
+            .filter(ScheduleEvent.equipment_id == master.id)
+            .filter(ScheduleEvent.event_type == "shipment_request")
+            .order_by(ScheduleEvent.event_date.desc(), ScheduleEvent.id.desc())
+            .first()
+        )
+        if ev and ev.event_date:
+            shipping_date = ev.event_date
+
+    # 3) equipment_master 에 칠러 S/N 이 없으면 setup_sheet_all 의 최신 값으로 폴백
+    if not chiller_serial_number:
+        setup_row = (
+            db.query(SetupSheetAll.chiller_sn)
+            .filter(func.lower(SetupSheetAll.machine_no) == mid.lower())
+            .filter(SetupSheetAll.chiller_sn.isnot(None))
+            .order_by(SetupSheetAll.created_at.desc(), SetupSheetAll.id.desc())
+            .first()
+        )
+        if setup_row and setup_row.chiller_sn and str(setup_row.chiller_sn).strip():
+            chiller_serial_number = str(setup_row.chiller_sn).strip()
+
+    filled: list[str] = []
+    if serial_number:
+        filled.append("serial_number")
+    if chiller_serial_number:
+        filled.append("chiller_serial_number")
+    if shipping_date:
+        filled.append("shipping_date")
+    if manager:
+        filled.append("manager")
+    if customer:
+        filled.append("customer")
+
+    return EquipmentSyncInfoOut(
+        machine_id=mid,
+        serial_number=serial_number,
+        chiller_serial_number=chiller_serial_number,
+        shipping_date=shipping_date,
+        manager=manager,
+        customer=customer,
+        filled_fields=filled,
+        not_found=(master is None and chiller_serial_number is None),
     )
 
 

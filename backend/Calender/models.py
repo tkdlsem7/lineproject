@@ -61,6 +61,10 @@ class EquipmentMaster(Base):
     mani_type = Column(Text, nullable=True)
     current_status = Column(Text, nullable=True)
     is_shipped = Column(Boolean, nullable=False, server_default=text("false"))
+    # 생산일정 엑셀의 "담당자" 컬럼을 옮겨담는 자리
+    manager = Column(Text, nullable=True)
+    # 칠러이력 엑셀의 S/N 컬럼(칠러 시리얼 넘버) 보관용
+    chiller_sn = Column(Text, nullable=True)
 
     created_at = Column(
         DateTime,

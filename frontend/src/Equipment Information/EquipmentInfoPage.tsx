@@ -4,7 +4,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
 
 /* ----------------------------------------------------------------------------- */
-const API_BASE = "http://192.168.101.1:8000/api";
+const API_BASE =
+  process.env.NODE_ENV === "production" ? "/api" : "http://192.168.101.1:8000/api";
 
 const authHeaders = (): Record<string, string> => {
   const t = localStorage.getItem("access_token");
@@ -85,6 +86,43 @@ type EquipDetailRes = {
   // (선택) 백엔드가 같이 내려주면 사용
   receive_date?: string | null;
 };
+
+/** ✅ 동기화된 다른 테이블에서 호기 기준 정보 조회 */
+type EquipSyncInfoRes = {
+  machine_id: string;
+  serial_number?: string | null;
+  chiller_serial_number?: string | null;
+  shipping_date?: string | null;
+  manager?: string | null;
+  customer?: string | null;
+  filled_fields?: string[];
+  not_found?: boolean;
+};
+
+async function fetchEquipmentSyncInfo(
+  machineId: string
+): Promise<EquipSyncInfoRes | null> {
+  const mid = (machineId || "").trim();
+  if (!mid) return null;
+
+  const url = `${API_BASE}/dashboard/equipment/sync-info?machine_id=${encodeURIComponent(mid)}`;
+
+  try {
+    const res = await fetch(url, {
+      credentials: "include",
+      headers: { ...authHeaders() },
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      console.error("[sync-info] FAIL", res.status, url, txt);
+      return null;
+    }
+    return (await res.json()) as EquipSyncInfoRes;
+  } catch (e) {
+    console.error("[sync-info] ERROR", url, e);
+    return null;
+  }
+}
 
 async function fetchEquipmentDetailBySlot(
   site: string,
@@ -335,6 +373,9 @@ const EquipmentInfoPage: React.FC = () => {
 
   const [saving, setSaving] = useState(false);
 
+  // ✅ 데이터 동기화 버튼 상태
+  const [syncing, setSyncing] = useState(false);
+
   const [selectedOptions, setSelectedOptions] = useState<OptionRow[]>([]);
   const [optOpen, setOptOpen] = useState(false);
 
@@ -536,6 +577,64 @@ const EquipmentInfoPage: React.FC = () => {
     };
   }, [machineId]);
 
+  /** ✅ 데이터 동기화 — 호기 번호 하나로 다른 테이블에서 정보를 끌어와서 폼을 채운다 */
+  const handleSyncFromDb = async () => {
+    if (!canEdit) {
+      alert("권한이 부족하여 동기화할 수 없습니다.");
+      return;
+    }
+    const mid = (machineId || "").trim();
+    if (!mid) {
+      alert("먼저 호기 번호(Machine ID)를 입력해주세요.");
+      return;
+    }
+
+    try {
+      setSyncing(true);
+      const info = await fetchEquipmentSyncInfo(mid);
+      if (!info) {
+        alert("동기화된 데이터를 불러오지 못했습니다. 네트워크 또는 서버 상태를 확인해주세요.");
+        return;
+      }
+
+      const filled: string[] = [];
+
+      if (typeof info.serial_number === "string" && info.serial_number) {
+        setSerialNumber(info.serial_number);
+        filled.push("시리얼번호");
+      }
+      if (typeof info.chiller_serial_number === "string" && info.chiller_serial_number) {
+        setChillerSerialNumber(info.chiller_serial_number);
+        filled.push("칠러 시리얼");
+      }
+      if (typeof info.shipping_date === "string" && info.shipping_date) {
+        setShippingDate(info.shipping_date.slice(0, 10));
+        filled.push("출하일");
+      }
+      if (typeof info.manager === "string" && info.manager) {
+        setManager(info.manager);
+        filled.push("담당자");
+      }
+      if (typeof info.customer === "string" && info.customer) {
+        setCustomer(info.customer);
+        filled.push("고객사");
+      }
+
+      if (filled.length === 0) {
+        alert(
+          `호기 "${mid}" 에 해당하는 동기화 데이터가 없습니다.\n` +
+            "엑셀 동기화가 됐는지, 호기 번호가 정확한지 확인해주세요."
+        );
+      } else {
+        alert(`다음 항목을 동기화 데이터로 채웠습니다:\n• ${filled.join("\n• ")}`);
+      }
+    } catch (e: any) {
+      alert(e?.message ?? "동기화 중 오류가 발생했습니다.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const pageTitle = machineId ? `${machineId} 장비 정보 수정` : "장비 정보 입력";
 
   const handleOptionConfirm = (rows: OptionRow[]) => {
@@ -728,16 +827,39 @@ const EquipmentInfoPage: React.FC = () => {
                   <label className="mb-1 block text-sm font-medium text-gray-700">
                     Machine ID <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    value={machineId}
-                    onChange={(e) => setMachineId(e.target.value)}
-                    placeholder="예) j-07-02"
-                    disabled={!canEdit}
-                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
-                      canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
-                    }`}
-                  />
-                  <p className="mt-1 text-xs text-gray-400">중복된 호기는 저장 시 차단됩니다.</p>
+                  <div className="flex items-stretch gap-2">
+                    <input
+                      value={machineId}
+                      onChange={(e) => setMachineId(e.target.value)}
+                      placeholder="예) j-07-02"
+                      disabled={!canEdit}
+                      className={`flex-1 rounded-lg border px-3 py-2 text-sm focus:border-sky-400 focus:ring-2 focus:ring-sky-200 ${
+                        canEdit ? "border-gray-200" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSyncFromDb}
+                      disabled={!canEdit || syncing || !machineId.trim()}
+                      title={
+                        !canEdit
+                          ? "권한 부족"
+                          : !machineId.trim()
+                            ? "호기 번호를 먼저 입력해주세요"
+                            : "동기화된 DB 데이터로 시리얼/출하일/칠러SN/담당자/고객사를 자동 채우기"
+                      }
+                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-sm transition ${
+                        !canEdit || syncing || !machineId.trim()
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : "bg-sky-600 hover:bg-sky-700"
+                      }`}
+                    >
+                      {syncing ? "동기화 중..." : "🔄 데이터 동기화"}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    중복된 호기는 저장 시 차단됩니다. · 동기화 버튼을 누르면 시리얼/출하일/칠러SN/담당자/고객사가 DB 값으로 채워집니다.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

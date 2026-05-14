@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import DefectCatalogModal from "./DefectCatalogModal";
 
 /** 스텝 옵션 */
 const STEPS = [
@@ -60,8 +61,8 @@ const DEFECT_GROUP_OPTIONS = ["단순 하드웨어", "기능"] as const;
 type DefectGroup = (typeof DEFECT_GROUP_OPTIONS)[number];
 
 /** API 기본 경로 */
-const API_BASE = "http://192.168.101.1:8000/api";
-
+const API_BASE =
+  process.env.NODE_ENV === "production" ? "/api" : "http://192.168.101.1:8000/api";
 
 const authHeaders = (): Record<string, string> => {
   const t = localStorage.getItem("access_token");
@@ -512,6 +513,9 @@ export default function SetupDefectEntryPage() {
     null
   );
 
+  // ✅ 불량 항목 관리 모달 (별도 페이지로 이동하지 않고 같은 화면 위에서 띄움)
+  const [defectCatalogModalOpen, setDefectCatalogModalOpen] = useState(false);
+
   const defectOptions = useMemo(() => {
     return defectCatalog
       .map((x) => (x?.defect ?? "").trim())
@@ -541,62 +545,68 @@ export default function SetupDefectEntryPage() {
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [defectCatalog]);
 
-  useEffect(() => {
-    let alive = true;
+  /**
+   * 불량 카탈로그를 서버에서 다시 불러오는 함수.
+   * - 최초 마운트 시 useEffect 에서 호출
+   * - 불량 항목 관리 모달이 닫힐 때도 호출하여 row data 폼의
+   *   불량/불량유형 셀렉트 옵션을 최신 상태로 동기화
+   */
+  const loadDefectCatalog = useCallback(async () => {
     setDefectCatalogLoading(true);
     setDefectCatalogError(null);
-
-    axios
-      .get(`${API_BASE}/defect-catalog`, {
+    try {
+      const res = await axios.get(`${API_BASE}/defect-catalog`, {
         headers: { ...authHeaders() },
-      })
-      .then((res) => {
-        if (!alive) return;
-
-        const data = Array.isArray(res.data) ? res.data : [];
-
-        const normalized: DefectCatalogItem[] = data
-          .map((r: any, idx: number) => {
-            const defect = String(r?.defect ?? "").trim();
-            const rawTypes = r?.defect_types ?? r?.defectTypes ?? [];
-
-            const types = Array.isArray(rawTypes)
-              ? rawTypes
-                  .map((x: any) => String(x ?? "").trim())
-                  .filter(Boolean)
-              : String(rawTypes ?? "")
-                  .split(",")
-                  .map((x) => x.trim())
-                  .filter(Boolean);
-
-            if (!defect) return null;
-
-            return {
-              id: Number.isFinite(r?.id) ? Number(r.id) : idx + 1,
-              defect,
-              defect_types: types,
-            };
-          })
-          .filter(Boolean) as DefectCatalogItem[];
-
-        setDefectCatalog(normalized);
-      })
-      .catch((err) => {
-        if (!alive) return;
-        console.error(err);
-        setDefectCatalogError(
-          "불량 목록을 불러오지 못했습니다. (fallback 목록 사용)"
-        );
-      })
-      .finally(() => {
-        if (!alive) return;
-        setDefectCatalogLoading(false);
       });
+      const data = Array.isArray(res.data) ? res.data : [];
 
+      const normalized: DefectCatalogItem[] = data
+        .map((r: any, idx: number) => {
+          const defect = String(r?.defect ?? "").trim();
+          const rawTypes = r?.defect_types ?? r?.defectTypes ?? [];
+
+          const types = Array.isArray(rawTypes)
+            ? rawTypes
+                .map((x: any) => String(x ?? "").trim())
+                .filter(Boolean)
+            : String(rawTypes ?? "")
+                .split(",")
+                .map((x) => x.trim())
+                .filter(Boolean);
+
+          if (!defect) return null;
+
+          return {
+            id: Number.isFinite(r?.id) ? Number(r.id) : idx + 1,
+            defect,
+            defect_types: types,
+          };
+        })
+        .filter(Boolean) as DefectCatalogItem[];
+
+      setDefectCatalog(normalized);
+    } catch (err) {
+      console.error(err);
+      setDefectCatalogError(
+        "불량 목록을 불러오지 못했습니다. (fallback 목록 사용)"
+      );
+    } finally {
+      setDefectCatalogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      await loadDefectCatalog();
+      if (!alive) {
+        // 컴포넌트가 언마운트된 경우 추가 후처리 없음
+      }
+    })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [loadDefectCatalog]);
 
   /** 자동 채움 */
   useEffect(() => {
@@ -1009,8 +1019,9 @@ export default function SetupDefectEntryPage() {
 
                 <button
                   type="button"
-                  onClick={() => navigate("/defect-catalog")}
+                  onClick={() => setDefectCatalogModalOpen(true)}
                   className="rounded-full bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
+                  title="현재 입력 중인 row data 를 잃지 않고 같은 화면 위에서 불량 항목을 관리합니다."
                 >
                   불량 항목 관리
                 </button>
@@ -1568,6 +1579,19 @@ export default function SetupDefectEntryPage() {
           </main>
         </div>
       </div>
+
+      {/* ✅ 불량 항목 관리 모달
+          - 별도 페이지로 이동하지 않으므로 입력 중이던 row data 가 그대로 유지됨
+          - 모달이 닫힐 때 loadDefectCatalog 를 다시 호출해서
+            row data 폼의 불량/불량유형 셀렉트 옵션을 최신 상태로 갱신 */}
+      <DefectCatalogModal
+        open={defectCatalogModalOpen}
+        onClose={() => {
+          setDefectCatalogModalOpen(false);
+          // 모달이 닫히는 시점에 항상 최신 카탈로그를 다시 불러온다.
+          loadDefectCatalog();
+        }}
+      />
     </div>
   );
 }

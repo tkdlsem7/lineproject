@@ -70,3 +70,23 @@ class EquipmentDetailOut(BaseModel):
 
     # 디버깅용(프론트는 무시 가능)
     found_by: Optional[str] = None
+
+
+class EquipmentSyncInfoOut(BaseModel):
+    """
+    호기 번호 기준으로 다른 동기화 테이블에서 긁어모은 데이터.
+    - serial_number       : equipment_master.stage_sn
+    - chiller_serial_number : setup_sheet_all.chiller_sn (가장 최근)
+    - shipping_date       : schedule_events 의 "출하요청" 이벤트 중 가장 최근 event_date
+    - manager             : equipment_master.manager
+    - customer            : equipment_master.customer_name
+    """
+    machine_id: str
+    serial_number: Optional[str] = None
+    chiller_serial_number: Optional[str] = None
+    shipping_date: Optional[date] = None
+    manager: Optional[str] = None
+    customer: Optional[str] = None
+    # 어떤 컬럼들이 실제로 채워졌는지(프론트 UX 메세지용)
+    filled_fields: list[str] = []
+    not_found: bool = False

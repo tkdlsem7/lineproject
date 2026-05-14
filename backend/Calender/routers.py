@@ -356,6 +356,8 @@ def _upsert_equipment(
     mani_type: Optional[str] = None,
     current_status: Optional[str] = None,
     is_shipped: Optional[bool] = None,
+    manager: Optional[str] = None,
+    chiller_sn: Optional[str] = None,
 ) -> EquipmentMaster:
     row = (
         db.query(EquipmentMaster)
@@ -384,6 +386,13 @@ def _upsert_equipment(
         row.current_status = current_status
     if is_shipped is not None:
         row.is_shipped = bool(is_shipped)
+    if manager:
+        row.manager = manager
+    if chiller_sn:
+        # 칠러이력 엑셀의 S/N 컬럼 (칠러 시리얼 넘버)
+        # 컬럼이 아직 마이그레이션되지 않은 환경에서도 안전하게 처리
+        if hasattr(row, "chiller_sn"):
+            row.chiller_sn = chiller_sn
 
     row.updated_at = datetime.now()
     db.flush()
@@ -643,6 +652,21 @@ def _process_production_workbook(db: Session, wb, upload_row: UploadFileModel, t
         qc_end_col = _find_col(header_map, "qc종료", "qc 종료")
         changed_col = _find_col(header_map, "변경유무")
         prev_ship_col = _find_col(header_map, "출하일변경전", "출하일 변경전")
+        # 생산일정 엑셀의 담당자 컬럼
+        # ⚠️ 헤더가 "SETTING" 인 경우, _find_col 의 부분 문자열 매칭이
+        #    "setting시작일" / "setting종료일" 까지 잘못 잡을 수 있다.
+        #    그래서 정확 일치(==) 후보를 먼저 시도하고,
+        #    못 찾을 때만 일반 부분 일치 후보(담당자/담당/엔지니어 등)로 폴백한다.
+        manager_col: Optional[int] = None
+        for exact_key in ("setting", "담당자", "담당", "엔지니어", "manager"):
+            norm = _norm_header(exact_key)
+            if norm in header_map:
+                manager_col = header_map[norm]
+                break
+        if not manager_col:
+            # 부분 매칭 폴백 — SETTING 시작/종료와 충돌할 가능성이 있는
+            # "setting" 후보는 의도적으로 제외했다.
+            manager_col = _find_col(header_map, "담당자", "담당", "엔지니어")
 
         if not machine_col:
             continue
@@ -690,6 +714,7 @@ def _process_production_workbook(db: Session, wb, upload_row: UploadFileModel, t
                     mani_type=_text(ws.cell(row_idx, mani_col).value) if mani_col else None,
                     current_status=current_status,
                     is_shipped=is_shipped,
+                    manager=_text(ws.cell(row_idx, manager_col).value) if manager_col else None,
                 )
 
                 mo_no = _text(ws.cell(row_idx, mo_col).value) if mo_col else None
@@ -1592,6 +1617,18 @@ def _process_chiller_workbook(db: Session, wb, upload_row: UploadFileModel, team
         in_col = _find_col(header_map, "입고일")
         out_col = _find_col(header_map, "출하일")
 
+        # 칠러이력 엑셀의 S/N 컬럼(=칠러 시리얼 넘버)
+        # 정확 일치를 우선해서 다른 SN 류(stage s/n, loader s/n 등)와 헷갈리지 않게 한다.
+        chiller_sn_col: Optional[int] = None
+        for exact_key in ("s/n", "sn", "시리얼", "시리얼번호", "serial", "serialno"):
+            norm = _norm_header(exact_key)
+            if norm in header_map:
+                chiller_sn_col = header_map[norm]
+                break
+        if not chiller_sn_col:
+            # 정확 일치가 없으면 부분 일치로 폴백
+            chiller_sn_col = _find_col(header_map, "s/n", "sn", "시리얼")
+
         if not machine_col:
             continue
 
@@ -1626,6 +1663,7 @@ def _process_chiller_workbook(db: Session, wb, upload_row: UploadFileModel, team
                     db,
                     machine_no=machine_no,
                     customer_name=_text(ws.cell(row_idx, customer_col).value) if customer_col else None,
+                    chiller_sn=_text(ws.cell(row_idx, chiller_sn_col).value) if chiller_sn_col else None,
                 )
 
                 mo_no = _text(ws.cell(row_idx, mo_col).value) if mo_col else None
@@ -2154,6 +2192,7 @@ def get_equipment_detail(
             "mani_type": equipment.mani_type,
             "current_status": equipment.current_status,
             "is_shipped": bool(equipment.is_shipped),
+            "manager": getattr(equipment, "manager", None),
             "created_at": equipment.created_at,
             "updated_at": equipment.updated_at,
         },
