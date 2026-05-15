@@ -14,6 +14,7 @@ type EquipmentRow = {
 // 프로젝트 설정에 따라 /api 프리픽스를 사용하지 않으면 "" 로 변경
 const API_BASE =
   process.env.NODE_ENV === "production" ? "/api" : "http://192.168.101.1:8000/api";
+
 // 요구: 사이트는 3개 고정
 const SITES = ["본사", "진우리", "라인대기"] as const;
 
@@ -57,8 +58,14 @@ const MoveEquipmentPage: React.FC = () => {
   );
   const initialSelected = url.get("machine_id") ?? "";
 
+  // 대시보드에서 진입 시 site 파라미터로 시작 사이트를 지정 가능 (예: 진우리, 라인대기)
+  const initialSiteFromUrl = (url.get("site") ?? "").trim();
+  const initialSite = (SITES as readonly string[]).includes(initialSiteFromUrl)
+    ? initialSiteFromUrl
+    : "본사";
+
   // 선택된 사이트(좌측 목록 필터용)
-  const [site, setSite] = React.useState<string>("본사");
+  const [site, setSite] = React.useState<string>(initialSite);
 
   // 좌측 리스트 데이터/상태
   const [rows, setRows] = React.useState<EquipmentRow[]>([]);

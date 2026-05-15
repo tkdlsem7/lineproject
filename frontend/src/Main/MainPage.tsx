@@ -553,7 +553,7 @@ const MainPage: React.FC<{ userName?: string }> = ({ userName }) => {
      좌측 사이드바(트리) 상태
      ========================= */
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
-    return { status: true, logs: true, attendance: true };
+    return { status: true, quality: true, ops: true };
   });
 
   const toggleGroup = (key: string) => {

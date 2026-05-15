@@ -15,7 +15,6 @@ import SetupDefectEntryPages from "./SetupDefectEntryPage/SetupDefectEntryPage";
 import AttendanceHistoryPage from "./Attendance/AttendanceHistoryPage";
 import LineAccessCurrentPage from "./LineAccess/LineAccessCurrentPage";
 import LineAccessLogsPage from "./LineAccess/LineAccessLogsPage";
-import SetupDefectManagePage from "./SetupDefectEntryPage/SetupDefectManagePage";
 import DefectCatalogPage from "./DefectCatalog/DefectCatalogPage";
 
 import BoardPage from "./Board/Boardpage";
@@ -166,14 +165,6 @@ export default function App() {
         }
       />
 
-      <Route
-        path="/SetupDefectEntryPage/manage"
-        element={
-          <RequireAuth>
-            <SetupDefectManagePage />
-          </RequireAuth>
-        }
-      />
 
       <Route
         path="/board"

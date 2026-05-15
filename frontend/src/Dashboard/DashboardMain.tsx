@@ -162,6 +162,49 @@ export default function DashboardMain() {
     [rows]
   );
 
+  // 선택된 site에 없을 때 다른 site들도 병렬로 조회해서 장비 위치를 찾는다.
+  const searchAcrossSites = useCallback(
+    async (q: string) => {
+      const keyword = q.trim().toLowerCase();
+      if (!keyword) return null;
+
+      const targets: Array<{
+        site: string;
+        building: "A" | "B" | "I" | "JIN";
+        view: ViewKey;
+      }> = [
+        { site: HQ_SITE, building: "A", view: "A" },
+        { site: HQ_SITE, building: "B", view: "B" },
+        { site: HQ_SITE, building: "I", view: "I" },
+        { site: WAIT_SITE, building: "A", view: "WAIT" },
+        { site: WAIT_SITE, building: "B", view: "WAIT" },
+        { site: WAIT_SITE, building: "I", view: "WAIT" },
+        { site: JIN_SITE, building: "JIN", view: "JIN" },
+      ];
+
+      const results = await Promise.all(
+        targets.map(async (t) => {
+          try {
+            const list = await fetchSlots({ site: t.site, building: t.building });
+            const row = list.find((r) =>
+              String(r.machine_id ?? "").toLowerCase().includes(keyword)
+            );
+            if (!row) return null;
+            return { view: t.view, row };
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      for (const r of results) {
+        if (r) return r;
+      }
+      return null;
+    },
+    []
+  );
+
   useEffect(() => {
     const q = debouncedQuery.trim().toLowerCase();
     if (!q) {
@@ -179,22 +222,46 @@ export default function DashboardMain() {
     else activateHighlight(String(found.slot_code ?? ""));
   }, [debouncedQuery, rows, building, activateHighlight, findMatchedRow]);
 
-  const onSearchClick = () => {
+  const [searching, setSearching] = useState(false);
+
+  const onSearchClick = async () => {
     const q = query.trim().toLowerCase();
     if (!q) {
       activateHighlight(null);
       return;
     }
 
-    const found = findMatchedRow(q);
-    if (!found) {
-      activateHighlight(null);
-      window.alert("검색한 호기를 찾지 못했습니다.");
+    // 1) 현재 선택된 site에서 먼저 찾기
+    const localFound = findMatchedRow(q);
+    if (localFound) {
+      if (building === "JIN") activateHighlight(String(localFound.machine_id ?? ""));
+      else activateHighlight(String(localFound.slot_code ?? ""));
       return;
     }
 
-    if (building === "JIN") activateHighlight(String(found.machine_id ?? ""));
-    else activateHighlight(String(found.slot_code ?? ""));
+    // 2) 현재 site에 없으면 다른 site들도 조회해서 위치 추적
+    try {
+      setSearching(true);
+      const remote = await searchAcrossSites(q);
+      if (!remote) {
+        activateHighlight(null);
+        window.alert("검색한 호기를 찾지 못했습니다.");
+        return;
+      }
+
+      // 같은 view에서 발견된 경우(방어적 처리)
+      if (remote.view === building) {
+        if (building === "JIN") activateHighlight(String(remote.row.machine_id ?? ""));
+        else activateHighlight(String(remote.row.slot_code ?? ""));
+        return;
+      }
+
+      // 검색된 위치로 view 전환 → load()가 다시 실행되고
+      // rows가 갱신되면 debouncedQuery useEffect가 자동으로 하이라이트해줌
+      setBuilding(remote.view);
+    } finally {
+      setSearching(false);
+    }
   };
 
   const findSearchTargetElement = useCallback(
@@ -294,14 +361,21 @@ export default function DashboardMain() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="호기(장비번호)로 검색…  예) j-01-10"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void onSearchClick();
+                }
+              }}
+              placeholder="호기(장비번호)로 검색…  예) j-01-10 (다른 동에 있어도 자동 이동)"
               className="w-full rounded-lg border px-4 py-2.5 text-sm focus:ring-4 focus:ring-indigo-200"
             />
             <button
-              onClick={onSearchClick}
-              className="rounded-lg bg-gray-200 px-10 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-300"
+              onClick={() => void onSearchClick()}
+              disabled={searching}
+              className="rounded-lg bg-gray-200 px-10 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              검색
+              {searching ? "검색 중…" : "검색"}
             </button>
           </div>
 

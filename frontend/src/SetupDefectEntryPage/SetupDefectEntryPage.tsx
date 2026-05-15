@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import DefectCatalogModal from "./DefectCatalogModal";
@@ -167,6 +168,223 @@ async function fetchEquipmentDetailBySlot(
   }
 }
 
+/** ✅ 호기 번호로 다른 테이블에서 공통 정보를 끌어오기 위한 응답 타입 */
+type EquipSyncInfoRes = {
+  machine_id: string;
+  serial_number?: string | null;
+  chiller_serial_number?: string | null;
+  shipping_date?: string | null;
+  manager?: string | null;
+  customer?: string | null;
+  filled_fields?: string[];
+  not_found?: boolean;
+};
+
+async function fetchEquipmentSyncInfo(
+  machineId: string
+): Promise<EquipSyncInfoRes | null> {
+  const mid = (machineId || "").trim();
+  if (!mid) return null;
+
+  const url = `${API_BASE}/dashboard/equipment/sync-info?machine_id=${encodeURIComponent(mid)}`;
+
+  try {
+    const res = await fetch(url, {
+      credentials: "include",
+      headers: { ...authHeaders() },
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      console.error("[sync-info] FAIL", res.status, url, txt);
+      return null;
+    }
+    return (await res.json()) as EquipSyncInfoRes;
+  } catch (e) {
+    console.error("[sync-info] ERROR", url, e);
+    return null;
+  }
+}
+
+/** ✅ 기존 row data 행 (서버 응답) */
+type SetupSheetRow = Record<string, any>;
+
+async function fetchSetupSheetRows(machineId: string): Promise<SetupSheetRow[]> {
+  const mid = (machineId || "").trim();
+  if (!mid) return [];
+
+  // 1) manage/rows 시도
+  try {
+    const res = await axios.get(`${API_BASE}/setup-sheets/manage/rows`, {
+      params: { machine_no: mid, limit: 500, offset: 0 },
+      headers: { ...authHeaders() },
+      timeout: 15000,
+    });
+    const rows = res.data?.rows;
+    if (Array.isArray(rows)) return rows;
+  } catch (e: any) {
+    const status = e?.response?.status;
+    console.warn(
+      "[setup-sheets/manage/rows] FAIL",
+      status,
+      JSON.stringify(e?.response?.data ?? e?.message)
+    );
+    // 422/404/405는 fallback 시도
+    if (status !== 404 && status !== 405 && status !== 422) {
+      // 다른 오류라도 fallback은 해보자
+    }
+  }
+
+  // 2) fallback: /logs/rows?table=setup_sheet_all (manage 페이지와 동일한 패턴)
+  try {
+    const res = await axios.get(`${API_BASE}/logs/rows`, {
+      params: {
+        table: "setup_sheet_all",
+        q: mid,
+        limit: 200,
+        offset: 0,
+      },
+      headers: { ...authHeaders() },
+      timeout: 15000,
+    });
+    const rows = res.data?.rows;
+    if (!Array.isArray(rows)) return [];
+    // q는 광범위 검색이므로 클라이언트 측에서 호기 정확 매칭 한 번 더 필터
+    const target = mid.toLowerCase();
+    return rows.filter((r: any) => {
+      const m = String(
+        r?.machine_no ?? r?.machineNo ?? r?.machine_id ?? r?.machineId ?? ""
+      )
+        .trim()
+        .toLowerCase();
+      return m === target;
+    });
+  } catch (e: any) {
+    console.error(
+      "[logs/rows fallback] FAIL",
+      e?.response?.status,
+      JSON.stringify(e?.response?.data ?? e?.message)
+    );
+    return [];
+  }
+}
+
+/** ✅ 특정 step의 행만 호기 기준으로 가져오기 (step 클릭 시 자동 로드용) */
+async function fetchSetupSheetRowsByStep(
+  machineId: string,
+  step: string
+): Promise<SetupSheetRow[]> {
+  const mid = (machineId || "").trim();
+  if (!mid) return [];
+
+  // 1) manage/rows?step= 시도
+  try {
+    const res = await axios.get(`${API_BASE}/setup-sheets/manage/rows`, {
+      params: { machine_no: mid, step, limit: 500, offset: 0 },
+      headers: { ...authHeaders() },
+      timeout: 15000,
+    });
+    const rows = res.data?.rows;
+    if (Array.isArray(rows)) return rows;
+  } catch (e: any) {
+    const status = e?.response?.status;
+    console.warn(
+      "[setup-sheets/manage/rows by step] FAIL",
+      status,
+      JSON.stringify(e?.response?.data ?? e?.message)
+    );
+  }
+
+  // 2) fallback: 전체 가져와서 클라이언트에서 step + machine_no 필터
+  const all = await fetchSetupSheetRows(mid);
+  const target = step.trim();
+  return all.filter((r: any) => {
+    const sn = String(r?.step_name ?? r?.stepName ?? "").trim();
+    return sn === target;
+  });
+}
+
+/** ✅ 서버 row → DetailRow 변환 (snake/camelCase 모두 허용) */
+function rowToDetailRow(r: any): DetailRow {
+  const get = (snake: string, camel: string) => {
+    const v = r?.[snake];
+    if (v !== undefined && v !== null) return v;
+    return r?.[camel];
+  };
+  const hw: HwSw = get("hw_sw", "hwSw") === "S/W" ? "S/W" : "H/W";
+  const dg: DefectGroup =
+    get("defect_group", "defectGroup") === "기능" ? "기능" : "단순 하드웨어";
+  const qs = get("quality_score", "qualityScore");
+  const ts = get("ts_hours", "tsHours");
+  return {
+    defectDetail: String(get("defect_detail", "defectDetail") ?? ""),
+    qualityScore: qs === null || qs === undefined ? "" : String(qs),
+    tsMinutes: ts === null || ts === undefined ? "" : String(ts),
+    hwSw: hw,
+    defectGroup: dg,
+    defectLocation: String(get("defect_location", "defectLocation") ?? ""),
+    defect: String(get("defect", "defect") ?? ""),
+    defectType: String(get("defect_type", "defectType") ?? ""),
+    remark: String(get("remark", "remark") ?? ""),
+  };
+}
+
+/** ✅ 서버 rows를 한 step의 (summary, summaryEnabled, details)로 변환 */
+function rowsToStepState(
+  rows: any[],
+  step: StepType
+): {
+  summary: SummaryRow | null;
+  summaryEnabled: boolean;
+  details: DetailRow[];
+  sheetId: number | null;
+} {
+  // 가장 최근 sheet_id의 행만 사용
+  const sheetIds = rows
+    .map((r) => Number(r?.sheet_id ?? r?.sheetId ?? 0))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const latest = sheetIds.length > 0 ? Math.max(...sheetIds) : 0;
+  const targetRows = latest
+    ? rows.filter((r) => Number(r?.sheet_id ?? r?.sheetId ?? 0) === latest)
+    : rows;
+
+  // step_name이 일치하는 행만
+  const stepRows = targetRows.filter((r) => {
+    const sn = String(r?.step_name ?? r?.stepName ?? "").trim();
+    return sn === step;
+  });
+
+  const hasSetup = (r: any) => {
+    const v = r?.setup_hours ?? r?.setupHours;
+    return v !== null && v !== undefined && String(v).trim() !== "";
+  };
+
+  const summaryRow = stepRows.find(hasSetup);
+  const detailRows = stepRows.filter((r) => !hasSetup(r));
+
+  const isCommon = step === "Common";
+  let summary: SummaryRow | null = null;
+  if (summaryRow) {
+    const sh = summaryRow.setup_hours ?? summaryRow.setupHours;
+    summary = {
+      setupHours: sh === null || sh === undefined ? "" : String(sh),
+      applyText: isCommon
+        ? String(summaryRow.defect_detail ?? summaryRow.defectDetail ?? "")
+        : "",
+      remark: isCommon
+        ? String(summaryRow.remark ?? "")
+        : "",
+    };
+  }
+
+  return {
+    summary,
+    summaryEnabled: !!summaryRow,
+    details: detailRows.map(rowToDetailRow),
+    sheetId: latest || null,
+  };
+}
+
+
 
 /** EquipmentInfoPage에서 저장해 둔 로컬 intent(시리얼/칠러시리얼) */
 type MachineInfoIntent = {
@@ -238,27 +456,27 @@ const PAGE_BG =
 const FRAME = "mx-auto w-full max-w-[1480px] 2xl:max-w-[1680px]";
 
 const PANEL =
-  "flex h-[calc(100vh-32px)] flex-col overflow-hidden rounded-3xl bg-white/70 shadow-xl ring-1 ring-slate-200/70 backdrop-blur";
+  "flex h-[calc(100vh-32px)] flex-col overflow-hidden rounded-none bg-white/70 shadow-xl ring-1 ring-slate-200/70 backdrop-blur";
 const CONTENT =
   "flex-1 overflow-y-auto no-scrollbar bg-white/35 p-4 md:p-6 space-y-4";
 
 const inputBase =
-  "h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-4 text-[15px] text-slate-800 shadow-sm " +
+  "h-11 w-full rounded-none border-2 border-slate-300 bg-white px-4 text-[15px] text-slate-800 shadow-sm " +
   "focus:outline-none focus:ring-2 focus:ring-sky-200/70";
 
 const textareaCompact =
-  "min-h-[44px] w-full resize-y rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-2 text-[15px] leading-6 text-slate-800 shadow-sm " +
+  "min-h-[44px] w-full resize-y rounded-none border-2 border-slate-300 bg-white px-4 py-2 text-[15px] leading-6 text-slate-800 shadow-sm " +
   "focus:outline-none focus:ring-2 focus:ring-sky-200/70";
 
 const textareaBase =
-  "min-h-[96px] w-full resize-y rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3 text-[15px] leading-6 text-slate-800 shadow-sm " +
+  "min-h-[96px] w-full resize-y rounded-none border-2 border-slate-300 bg-white px-4 py-3 text-[15px] leading-6 text-slate-800 shadow-sm " +
   "focus:outline-none focus:ring-2 focus:ring-sky-200/70";
 
 const selectBase =
-  "h-11 w-full rounded-2xl border border-slate-200/70 bg-white/80 px-3 text-[15px] text-slate-800 shadow-sm " +
+  "h-11 w-full rounded-none border-2 border-slate-300 bg-white px-3 text-[15px] text-slate-800 shadow-sm " +
   "focus:outline-none focus:ring-2 focus:ring-sky-200/70 disabled:bg-slate-100";
 
-const softPanel = "rounded-2xl bg-slate-50/80 ring-1 ring-slate-200/60";
+const softPanel = "rounded-none bg-slate-50/80 ring-1 ring-slate-200/60";
 
 /** ---------- UI ---------- */
 const Shell: React.FC<{
@@ -270,11 +488,11 @@ const Shell: React.FC<{
 }> = ({ children, className, header, headerRight, badge }) => (
   <section
     className={[
-      "rounded-3xl bg-white shadow-sm ring-1 ring-slate-200/60",
+      "rounded-none bg-white shadow-md ring-2 ring-slate-200",
       className ?? "",
     ].join(" ")}
   >
-    <div className="h-2 rounded-t-3xl bg-gradient-to-r from-sky-200 via-white to-orange-200" />
+    <div className="h-2 rounded-none bg-gradient-to-r from-sky-200 via-white to-orange-200" />
     {header && (
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-7 py-5">
         <div className="flex items-center gap-2">
@@ -282,7 +500,7 @@ const Shell: React.FC<{
             {header}
           </h3>
           {badge && (
-            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700">
+            <span className="rounded-none bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700">
               {badge}
             </span>
           )}
@@ -395,7 +613,7 @@ const AutoCompleteInput: React.FC<AutoCompleteInputProps> = ({
       />
 
       {open && filtered.length > 0 && !disabled && (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-none border border-slate-200 bg-white shadow-lg">
           {filtered.map((opt, i) => (
             <button
               key={opt}
@@ -419,6 +637,168 @@ const AutoCompleteInput: React.FC<AutoCompleteInputProps> = ({
   );
 };
 
+/** ---------- 팝업으로 옵션 선택하는 입력 (불량/불량유형용) ---------- */
+type OptionPickerInputProps = {
+  value: string;
+  onChangeValue: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+  disabled?: boolean;
+  inputClassName?: string;
+  title?: string;
+};
+
+const OptionPickerInput: React.FC<OptionPickerInputProps> = ({
+  value,
+  onChangeValue,
+  options,
+  placeholder,
+  disabled,
+  inputClassName,
+  title,
+}) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const filtered = useMemo(() => {
+    const kw = query.trim().toLowerCase();
+    if (!kw) return options;
+    return options.filter((x) => x.toLowerCase().includes(kw));
+  }, [query, options]);
+
+  // ESC로 닫기
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // 열릴 때 검색어 초기화
+  useEffect(() => {
+    if (open) setQuery("");
+  }, [open]);
+
+  const handlePick = (v: string) => {
+    onChangeValue(v);
+    setOpen(false);
+    // 선택 후 다음 인풋으로 포커스 이동
+    setTimeout(() => {
+      if (triggerRef.current) focusNextFrom(triggerRef.current as any);
+    }, 0);
+  };
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        data-enter-next="1"
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
+            e.preventDefault();
+            if (!disabled) setOpen(true);
+          }
+        }}
+        className={[
+          inputClassName ?? inputBase,
+          "text-left flex items-center justify-between gap-2 cursor-pointer",
+          !value ? "text-slate-400" : "text-slate-800",
+          disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-slate-50",
+        ].join(" ")}
+      >
+        <span className="truncate">{value || placeholder || "선택..."}</span>
+        <span className="shrink-0 text-slate-400">▾</span>
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+            onMouseDown={() => setOpen(false)}
+          >
+            <div
+              className="w-[520px] max-w-[94vw] max-h-[80vh] overflow-hidden rounded-none bg-white shadow-2xl flex flex-col"
+              onMouseDown={(ev) => ev.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+                <div className="text-base font-bold text-slate-800">
+                  {title ?? "항목 선택"}
+                </div>
+                <button
+                  type="button"
+                  aria-label="닫기"
+                  onClick={() => setOpen(false)}
+                  className="rounded-none px-2 py-1 text-slate-500 hover:bg-slate-100"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="border-b border-slate-100 px-5 py-3">
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="검색..."
+                  className="h-10 w-full rounded-none border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200"
+                />
+              </div>
+
+              <div className="overflow-y-auto p-3">
+                {filtered.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-slate-400">
+                    표시할 항목이 없습니다.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {filtered.map((opt) => {
+                      const selected = opt === value;
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => handlePick(opt)}
+                          className={[
+                            "rounded-none px-3 py-2.5 text-left text-sm font-medium ring-1 transition",
+                            selected
+                              ? "bg-sky-600 text-white ring-sky-600 shadow"
+                              : "bg-white text-slate-700 ring-slate-200 hover:bg-sky-50 hover:ring-sky-300",
+                          ].join(" ")}
+                          title={opt}
+                        >
+                          <span className="block truncate">{opt}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-100 px-5 py-3 text-right">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="rounded-none bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
+  );
+};
+
 /** ---------- 컴포넌트 ---------- */
 export default function SetupDefectEntryPage() {
   const navigate = useNavigate();
@@ -428,6 +808,9 @@ export default function SetupDefectEntryPage() {
 
   const [selectedMachineId, setSelectedMachineId] = useState<string>("");
   const [equipInfo, setEquipInfo] = useState<EquipProgressRes | null>(null);
+
+  // ✅ 데이터 동기화 버튼 상태
+  const [syncing, setSyncing] = useState(false);
 
   const [meta, setMeta] = useState<MetaState>({
     machineNo: "",
@@ -758,6 +1141,207 @@ export default function SetupDefectEntryPage() {
   const onMeta = (k: keyof MetaState, v: string) =>
     setMeta((p) => ({ ...p, [k]: v }));
 
+  /** ✅ 데이터 동기화 — 호기 번호만 입력하고 누르면 공통 정보가 자동으로 채워짐 */
+  const handleSyncFromDb = async () => {
+    const mid = (meta.machineNo || "").trim();
+    if (!mid) {
+      alert("호기 번호를 먼저 입력해주세요.");
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      // 1) sync-info (시리얼/칠러SN/담당자/고객사/출하일 등 다른 테이블 참조 정보)
+      const info = await fetchEquipmentSyncInfo(mid);
+
+      // 2) equip-progress (site/slot/manager 등 공통 정보) - equipInfo 패널 갱신용
+      let ep: EquipProgressRes | null = null;
+      try {
+        const res = await axios.get(`${API_BASE}/equip-progress/by-machine`, {
+          params: { machine_id: mid },
+          headers: { ...authHeaders() },
+        });
+        ep = res.data as EquipProgressRes;
+        setEquipInfo(ep);
+      } catch (e) {
+        // 404 등은 무시 - 다른 소스로도 채워질 수 있음
+      }
+
+      // 3) site/slot 기반 상세 (sync-info에 누락이 있을 때 보강)
+      let detailFill: { sn?: string; chillerSn?: string } = {};
+      if (ep?.site && ep?.slot_code) {
+        const d = await fetchEquipmentDetailBySlot(String(ep.site), String(ep.slot_code));
+        if (d) {
+          detailFill = {
+            sn: d.serial_number ?? "",
+            chillerSn: pickChiller(d),
+          };
+        }
+      }
+
+      // 4) setting-dates (세팅 시작/종료일)
+      let dateFill: { setupStart?: string; setupEnd?: string } = {};
+      try {
+        const sdRes = await axios.get(`${API_BASE}/setup-sheets/setting-dates`, {
+          params: { machine_no: mid },
+          headers: { ...authHeaders() },
+        });
+        const sd: SettingDatesRes = sdRes.data;
+        dateFill = {
+          setupStart: sd?.start_date ?? "",
+          setupEnd: sd?.end_date ?? "",
+        };
+      } catch (e: any) {
+        if (e?.response?.status && e.response.status !== 404) console.error(e);
+      }
+
+      // 폼에 채우기 (사용자가 이미 입력한 값은 덮어쓰지 않음)
+      const filled: string[] = [];
+      setMeta((p) => {
+        const next = { ...p };
+        if (!next.machineNo) next.machineNo = mid;
+
+        const nextSn =
+          (info?.serial_number ?? "") ||
+          (ep?.serial_number ?? "") ||
+          (detailFill.sn ?? "");
+        if (!next.sn && nextSn) {
+          next.sn = nextSn;
+          filled.push("시리얼");
+        }
+
+        const nextChiller =
+          (info?.chiller_serial_number ?? "") ||
+          pickChiller(ep ?? {}) ||
+          (detailFill.chillerSn ?? "");
+        if (!next.chillerSn && nextChiller) {
+          next.chillerSn = nextChiller;
+          filled.push("칠러 시리얼");
+        }
+
+        if (!next.setupStart && dateFill.setupStart) {
+          next.setupStart = dateFill.setupStart;
+          filled.push("세팅 시작일");
+        }
+        if (!next.setupEnd && dateFill.setupEnd) {
+          next.setupEnd = dateFill.setupEnd;
+          filled.push("세팅 종료일");
+        }
+
+        return next;
+      });
+
+      // 5) ✅ 기존에 저장된 row data 복원 (있으면 폼에 채워서 수정 가능)
+      let loadedRowsCount = 0;
+      let loadedSheetId: number | null = null;
+      try {
+        const sheetRows = await fetchSetupSheetRows(mid);
+        console.log("[sync] 호기", mid, "에서", sheetRows.length, "개 행 로드");
+        if (sheetRows.length > 0) {
+          // step별로 rowsToStepState 헬퍼 호출 (snake/camelCase 모두 처리)
+          const newSummary: Partial<Record<StepType, SummaryRow>> = {};
+          const newSummaryEnabled: Partial<Record<StepType, boolean>> = {};
+          const newDetails: Partial<Record<StepType, DetailRow[]>> = {};
+
+          for (const step of STEPS) {
+            const r = rowsToStepState(sheetRows, step);
+            if (r.sheetId !== null && (loadedSheetId === null || r.sheetId > loadedSheetId)) {
+              loadedSheetId = r.sheetId;
+            }
+            if (r.summary) {
+              newSummary[step] = r.summary;
+              newSummaryEnabled[step] = true;
+              loadedRowsCount += 1;
+            } else if (r.details.length > 0) {
+              // 행이 있지만 요약(총 소요시간) 행이 없으면 비활성화
+              newSummaryEnabled[step] = false;
+            }
+            if (r.details.length > 0) {
+              newDetails[step] = r.details;
+              loadedRowsCount += r.details.length;
+            }
+          }
+
+          console.log("[sync] 적용할 step별 행:", {
+            summary: Object.keys(newSummary),
+            details: Object.fromEntries(
+              Object.entries(newDetails).map(([k, v]) => [k, v?.length ?? 0])
+            ),
+            loadedSheetId,
+          });
+
+          if (loadedRowsCount > 0) {
+            setSheetId(loadedSheetId);
+            setSummaryByStep(
+              (prev) => ({ ...prev, ...newSummary }) as Record<StepType, SummaryRow>
+            );
+            setSummaryEnabledByStep(
+              (prev) => ({ ...prev, ...newSummaryEnabled }) as Record<StepType, boolean>
+            );
+            setDetailsByStep(
+              (prev) => ({ ...prev, ...newDetails }) as Record<StepType, DetailRow[]>
+            );
+
+            // meta 보강
+            const anyRow: any = sheetRows[0];
+            if (anyRow) {
+              setMeta((p) => ({
+                ...p,
+                sn: p.sn || String(anyRow.sn ?? anyRow.serial_number ?? ""),
+                chillerSn:
+                  p.chillerSn ||
+                  String(anyRow.chiller_sn ?? anyRow.chiller_serial_number ?? ""),
+                setupStart:
+                  p.setupStart ||
+                  String(anyRow.setup_start_date ?? anyRow.setupStartDate ?? ""),
+                setupEnd:
+                  p.setupEnd ||
+                  String(anyRow.setup_end_date ?? anyRow.setupEndDate ?? ""),
+              }));
+            }
+          } else {
+            console.warn(
+              "[sync] 응답에 행은 있지만 step별 분류 결과가 비어있음. 응답 첫 행:",
+              sheetRows[0]
+            );
+            setSheetId(null);
+          }
+        } else {
+          // 기존 데이터가 없으면 새 입력 모드 (sheetId 초기화)
+          setSheetId(null);
+        }
+      } catch (e) {
+        console.error("기존 row data 로드 실패:", e);
+      }
+
+      // 안내
+      const hasAnySource =
+        !!info ||
+        !!ep ||
+        !!detailFill.sn ||
+        !!detailFill.chillerSn ||
+        !!dateFill.setupStart ||
+        !!dateFill.setupEnd ||
+        loadedRowsCount > 0;
+
+      if (!hasAnySource) {
+        alert(`호기 "${mid}" 에 해당하는 동기화 데이터가 없습니다.`);
+      } else if (loadedRowsCount > 0) {
+        alert(
+          `불러오기를 완료했습니다.
+기존 작성된 row data ${loadedRowsCount}건을 폼에 복원했습니다. (수정 후 저장하면 덮어쓰기 됩니다)`
+        );
+      } else {
+        alert("불러오기를 완료했습니다.");
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "동기화 중 오류가 발생했습니다.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const onEnterNext = (
     e: React.KeyboardEvent<NextableEl>,
     opts?: { allowNewline?: boolean }
@@ -880,6 +1464,48 @@ export default function SetupDefectEntryPage() {
 
       let sid = sheetId ?? null;
 
+      // ✅ 기존 sheet의 "현재 step"에 해당하는 행들만 삭제 (다른 step은 보존)
+      if (sid !== null) {
+        try {
+          const existing = await fetchSetupSheetRowsByStep(
+            meta.machineNo,
+            currentStep
+          );
+          // sheet_id + step_name 모두로 필터 (백엔드가 step 파라미터를 무시해도 안전)
+          const targetRows = existing.filter(
+            (r) =>
+              Number(r?.sheet_id ?? r?.sheetId ?? 0) === sid &&
+              String(r?.step_name ?? r?.stepName ?? "").trim() === currentStep
+          );
+          for (const r of targetRows) {
+            const id = r?.id;
+            if (!id) continue;
+            try {
+              await axios.delete(
+                `${API_BASE}/setup-sheets/manage/step/${encodeURIComponent(String(id))}`,
+                { headers: { ...authHeaders() }, timeout: 15000 }
+              );
+            } catch (e: any) {
+              const st = e?.response?.status;
+              if (st === 404 || st === 405) {
+                await axios.post(
+                  `${API_BASE}/setup-sheets/manage/delete-step`,
+                  { id },
+                  { headers: { ...authHeaders() }, timeout: 15000 }
+                );
+              } else {
+                throw e;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("기존 step 행 삭제 실패:", e);
+          alert(
+            "기존 행 삭제에 실패했습니다. 저장 후 중복 행이 생기면 동기화 후 다시 저장해주세요."
+          );
+        }
+      }
+
       // ✅ 요약행이 없을 때, "아래부터 저장"을 위해
       // sheetId 생성에 사용할 상세행 인덱스를 기억
       let createdFromDetailIndex: number | null = null;
@@ -905,7 +1531,7 @@ export default function SetupDefectEntryPage() {
           { sheetId: sid, meta: metaPayload, step: summaryStep },
           { headers: { ...authHeaders() } }
         );
-        sid = firstRes.data?.sheetId ?? null;
+        sid = firstRes.data?.sheetId ?? sid;
       } else {
         // 요약행이 삭제된 경우 → "맨 아래 상세행"으로 sheetId 만들기
         if (details.length > 0) {
@@ -920,8 +1546,8 @@ export default function SetupDefectEntryPage() {
             },
             { headers: { ...authHeaders() } }
           );
-          sid = firstRes.data?.sheetId ?? null;
-          createdFromDetailIndex = lastIdx; // ✅ 이 행은 이미 저장됨
+          sid = firstRes.data?.sheetId ?? sid;
+          createdFromDetailIndex = lastIdx;
         } else {
           // 요약행도 없고 상세행도 없으면: 최소 step으로 sheet만 생성
           const dummy = {
@@ -942,7 +1568,7 @@ export default function SetupDefectEntryPage() {
             { sheetId: sid, meta: metaPayload, step: dummy },
             { headers: { ...authHeaders() } }
           );
-          sid = firstRes.data?.sheetId ?? null;
+          sid = firstRes.data?.sheetId ?? sid;
         }
       }
 
@@ -951,7 +1577,6 @@ export default function SetupDefectEntryPage() {
 
       // 2) 상세행 저장 순서: 아래 -> 위
       if (summaryEnabled) {
-        // 요약행(#1) 저장 후: 상세행은 맨 아래부터 저장
         for (let i = details.length - 1; i >= 0; i--) {
           await axios.post(
             `${API_BASE}/setup-sheets/save`,
@@ -960,7 +1585,6 @@ export default function SetupDefectEntryPage() {
           );
         }
       } else {
-        // 요약행이 없을 때: 맨 아래 행으로 sheetId를 만들었으니, 그 행은 제외하고 위로 저장
         const start = details.length - 1;
         for (let i = start; i >= 0; i--) {
           if (createdFromDetailIndex !== null && i === createdFromDetailIndex) continue;
@@ -1012,7 +1636,7 @@ export default function SetupDefectEntryPage() {
                 <button
                   type="button"
                   onClick={goBack}
-                  className="rounded-full bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
+                  className="rounded-none bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
                 >
                   뒤로가기
                 </button>
@@ -1020,34 +1644,26 @@ export default function SetupDefectEntryPage() {
                 <button
                   type="button"
                   onClick={() => setDefectCatalogModalOpen(true)}
-                  className="rounded-full bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
+                  className="rounded-none bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
                   title="현재 입력 중인 row data 를 잃지 않고 같은 화면 위에서 불량 항목을 관리합니다."
                 >
                   불량 항목 관리
                 </button>
 
 
-                <button
-                  type="button"
-                  onClick={() => navigate("/SetupDefectEntryPage/manage")}
-                  className="rounded-full bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
-                >
-                  row data 수정 폼
-                </button>
-
                 {defectCatalogLoading && (
-                  <span className="rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+                  <span className="rounded-none bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
                     불량목록 로딩중…
                   </span>
                 )}
                 {defectCatalogError && (
-                  <span className="rounded-full bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                  <span className="rounded-none bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
                     {defectCatalogError}
                   </span>
                 )}
 
                 {sheetId && (
-                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70">
+                  <span className="rounded-none bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70">
                     sheetId: {sheetId}
                   </span>
                 )}
@@ -1055,7 +1671,7 @@ export default function SetupDefectEntryPage() {
             </section>
 
             {/* Step 선택 전 메모 */}
-            <div className="rounded-3xl bg-white/70 px-5 py-4 ring-1 ring-slate-200/60">
+            <div className="rounded-none bg-white/70 px-5 py-4 ring-1 ring-slate-200/60">
               <div className="text-xs font-extrabold text-slate-700">메모</div>
               <div className="mt-1 text-sm text-slate-600">
                 Stage는 <b>Origin, 온도</b>까지 / 그 외 Stage 관련 내용은 전부{" "}
@@ -1064,7 +1680,7 @@ export default function SetupDefectEntryPage() {
             </div>
 
             {/* 스텝 탭 */}
-            <div className="rounded-3xl bg-white/70 px-4 py-3 ring-1 ring-slate-200/60">
+            <div className="rounded-none bg-white/70 px-4 py-3 ring-1 ring-slate-200/60">
               <div className="mb-2 text-xs font-semibold text-slate-500">
                 Step 선택{" "}
                 <span className="ml-2 font-normal text-slate-400">
@@ -1081,7 +1697,7 @@ export default function SetupDefectEntryPage() {
                       type="button"
                       onClick={() => changeStep(s)}
                       className={[
-                        "rounded-full px-4 py-2 text-sm font-extrabold transition",
+                        "rounded-none px-4 py-2 text-sm font-extrabold transition",
                         active
                           ? "bg-sky-600 text-white shadow-sm"
                           : "bg-white/80 text-slate-700 ring-1 ring-slate-200/70 hover:bg-white",
@@ -1095,7 +1711,29 @@ export default function SetupDefectEntryPage() {
             </div>
 
             {/* 공통 정보 */}
-            <Shell header="공통 정보" badge="Meta">
+            <Shell
+              header="공통 정보"
+              badge="Meta"
+              headerRight={
+                <button
+                  type="button"
+                  onClick={handleSyncFromDb}
+                  disabled={syncing || !meta.machineNo.trim()}
+                  title={
+                    !meta.machineNo.trim()
+                      ? "호기 번호를 먼저 입력해주세요"
+                      : "호기 번호 기준으로 DB에서 공통 정보를 가져옵니다"
+                  }
+                  className={`shrink-0 rounded-none px-3 py-2 text-sm font-semibold text-white shadow-sm transition ${
+                    syncing || !meta.machineNo.trim()
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-sky-600 hover:bg-sky-700"
+                  }`}
+                >
+                  {syncing ? "동기화 중..." : "🔄 데이터 동기화"}
+                </button>
+              }
+            >
               <div className="px-7 pb-7 pt-5">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                   <Field label="장비번호" hint="예: D(e)-13-03">
@@ -1191,7 +1829,7 @@ export default function SetupDefectEntryPage() {
             >
               <div className="px-7 pb-10 pt-6">
                 {/* ✅ 스크롤 내려도 항상 보이는 Sticky 액션바 */}
-                <div className="sticky top-3 z-30 -mx-7 mb-4 flex flex-wrap items-center justify-end gap-2 rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-slate-200/70 backdrop-blur">
+                <div className="sticky top-3 z-30 -mx-7 mb-4 flex flex-wrap items-center justify-end gap-2 rounded-none bg-white/85 px-4 py-3 shadow-sm ring-1 ring-slate-200/70 backdrop-blur">
                   <button
                     type="button"
                     onClick={() => {
@@ -1212,7 +1850,7 @@ export default function SetupDefectEntryPage() {
                         [currentStep]: true,
                       }));
                     }}
-                    className="rounded-full bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
+                    className="rounded-none bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-white"
                   >
                     초기화
                   </button>
@@ -1220,7 +1858,7 @@ export default function SetupDefectEntryPage() {
                   <button
                     type="button"
                     onClick={addDetailRow}
-                    className="rounded-full bg-gradient-to-r from-sky-600 to-teal-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:from-sky-700 hover:to-teal-700"
+                    className="rounded-none bg-gradient-to-r from-sky-600 to-teal-600 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:from-sky-700 hover:to-teal-700"
                   >
                     행 추가
                   </button>
@@ -1229,21 +1867,22 @@ export default function SetupDefectEntryPage() {
                     type="button"
                     onClick={handleSave}
                     disabled={loading}
-                    className="rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:from-orange-600 hover:to-amber-600 disabled:opacity-60"
+                    className="rounded-none bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:from-orange-600 hover:to-amber-600 disabled:opacity-60"
                   >
                     저장
                   </button>
                 </div>
                 {/* ✅ 요약행(#1) - "행 자체 삭제" 지원 */}
                 {summaryEnabled ? (
-                  <div className="overflow-hidden rounded-3xl bg-white/80 shadow-sm ring-1 ring-slate-200/70">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-5 py-3">
+                  <div className="overflow-hidden rounded-none bg-white shadow-md ring-2 ring-sky-200 relative">
+                    <div className="absolute inset-y-0 left-0 w-1.5 bg-sky-400" />
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-sky-100 bg-gradient-to-r from-sky-50 via-white to-sky-50 px-5 py-3 pl-6">
                       <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-extrabold text-white">
+                        <span className="rounded-none bg-slate-900 px-3 py-1 text-xs font-extrabold text-white">
                           #1
                         </span>
                         <span className="text-sm font-extrabold text-slate-700">
-                          요약 행 (세팅 총 소요시간)
+                          총 소요시간 (이 step의 합계)
                         </span>
                       </div>
 
@@ -1251,7 +1890,7 @@ export default function SetupDefectEntryPage() {
                       <button
                         type="button"
                         onClick={deleteSummaryRow}
-                        className="rounded-full bg-red-500 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-red-600"
+                        className="rounded-none bg-red-500 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-red-600"
                       >
                         삭제
                       </button>
@@ -1337,27 +1976,27 @@ export default function SetupDefectEntryPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="overflow-hidden rounded-3xl bg-white/70 ring-1 ring-slate-200/70">
-                    <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 bg-slate-50/70 px-5 py-3">
+                  <div className="overflow-hidden rounded-none bg-slate-50 ring-2 ring-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b-2 border-slate-200 bg-slate-100 px-5 py-3">
                       <div className="text-sm font-extrabold text-slate-700">
-                        요약 행(#1)이 삭제되었습니다.
+                        총 소요시간 행(#1)이 삭제되었습니다.
                       </div>
                       <button
                         type="button"
                         onClick={restoreSummaryRow}
-                        className="rounded-full bg-slate-900 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-slate-950"
+                        className="rounded-none bg-slate-900 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-slate-950"
                       >
-                        요약행 복구
+                        총 소요시간 행 복구
                       </button>
                     </div>
                     <div className="p-5 text-sm text-slate-600">
-                      필요하면 “요약행 복구”로 다시 추가할 수 있어요.
+                      필요하면 "총 소요시간 행 복구"로 다시 추가할 수 있어요.
                     </div>
                   </div>
                 )}
 
                 {/* 상세행들(2행부터) */}
-                <div className="mt-4 space-y-4">
+                <div className="mt-5 space-y-5">
                   {details.map((r, idx) => {
                     const rowNo = idx + 2;
                     const defectTypeOptions =
@@ -1366,18 +2005,19 @@ export default function SetupDefectEntryPage() {
                     return (
                       <div
                         key={idx}
-                        className="overflow-hidden rounded-3xl bg-white/80 shadow-sm ring-1 ring-slate-200/70"
+                        className="overflow-hidden rounded-none bg-white shadow-md ring-2 ring-orange-200 relative"
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-5 py-3">
+                        <div className="absolute inset-y-0 left-0 w-1.5 bg-orange-400" />
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-orange-100 bg-gradient-to-r from-orange-50 via-white to-orange-50 px-5 py-3 pl-6">
                           <div className="flex items-center gap-2">
-                            <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-extrabold text-white">
+                            <span className="rounded-none bg-slate-900 px-3 py-1 text-xs font-extrabold text-white">
                               #{rowNo}
                             </span>
                             <span className="text-sm font-extrabold text-slate-700">
-                              상세 행
+                              트러블 슛 행
                             </span>
                             {isMod && (
-                              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+                              <span className="rounded-none bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
                                 개조: T.S + 비고만
                               </span>
                             )}
@@ -1386,7 +2026,7 @@ export default function SetupDefectEntryPage() {
                           <button
                             type="button"
                             onClick={() => removeDetail(idx)}
-                            className="rounded-full bg-red-500 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-red-600"
+                            className="rounded-none bg-red-500 px-4 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-red-600"
                           >
                             삭제
                           </button>
@@ -1486,26 +2126,28 @@ export default function SetupDefectEntryPage() {
                                 </Field>
 
                                 <Field label="불량">
-                                  <AutoCompleteInput
+                                  <OptionPickerInput
                                     value={r.defect}
                                     onChangeValue={(v) =>
                                       updateDetail(idx, "defect", v)
                                     }
                                     options={defectOptions}
-                                    placeholder="예: Cable"
+                                    placeholder="클릭해서 선택"
                                     inputClassName={inputBase}
+                                    title="불량 선택"
                                   />
                                 </Field>
 
                                 <Field label="불량유형">
-                                  <AutoCompleteInput
+                                  <OptionPickerInput
                                     value={r.defectType}
                                     onChangeValue={(v) =>
                                       updateDetail(idx, "defectType", v)
                                     }
                                     options={defectTypeOptions}
-                                    placeholder="예: 단선"
+                                    placeholder="클릭해서 선택"
                                     inputClassName={inputBase}
+                                    title="불량유형 선택"
                                   />
                                 </Field>
                               </div>

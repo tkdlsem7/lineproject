@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   shipEquipment,
@@ -222,6 +223,16 @@ export default function MachineButton({
     if (typeof isOpen === "boolean") onToggleMenu?.();
     else setOpenLocal(false);
   };
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") closeMenu();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const lastToken = React.useMemo(() => {
     const raw = title ?? "";
@@ -507,31 +518,68 @@ export default function MachineButton({
         <div>담당: {manager ?? "-"}</div>
       </div>
 
-      {open && (
-        <div
-          data-menu-root="1"
-          className="absolute left-0 top-full z-50 mt-2 w-[220px] rounded-2xl border bg-white p-2 text-slate-800 shadow-2xl"
-          onMouseDown={stopAll}
-          onPointerDown={stopAll}
-          onClick={(ev) => ev.stopPropagation()}
-        >
-          {menuItems.map((mi) => (
-            <button
-              key={mi.label}
-              type="button"
-              onMouseDown={stopAll}
-              onPointerDown={stopAll}
-              onClick={(ev) => {
-                ev.stopPropagation();
-                mi.onClick();
-              }}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-[15px] hover:bg-slate-50"
+      {open &&
+        createPortal(
+          <div
+            data-menu-root="1"
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+            onMouseDown={(ev) => {
+              ev.stopPropagation();
+              closeMenu();
+            }}
+            onPointerDown={(ev) => ev.stopPropagation()}
+            onClick={(ev) => {
+              ev.stopPropagation();
+            }}
+          >
+            <div
+              className="w-[280px] max-w-[92vw] rounded-2xl border bg-white p-3 text-slate-800 shadow-2xl"
+              onMouseDown={(ev) => ev.stopPropagation()}
+              onPointerDown={(ev) => ev.stopPropagation()}
+              onClick={(ev) => ev.stopPropagation()}
             >
-              {mi.label}
-            </button>
-          ))}
-        </div>
-      )}
+              <div className="mb-2 flex items-start justify-between gap-2 border-b border-slate-200 px-2 pb-2">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-medium text-slate-500">
+                    [{String(slotCode ?? "").toUpperCase()}]
+                  </div>
+                  <div className="truncate text-sm font-bold text-slate-800">
+                    {title || "-"}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label="닫기"
+                  onMouseDown={stopAll}
+                  onPointerDown={stopAll}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    closeMenu();
+                  }}
+                  className="shrink-0 rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100"
+                >
+                  ✕
+                </button>
+              </div>
+              {menuItems.map((mi) => (
+                <button
+                  key={mi.label}
+                  type="button"
+                  onMouseDown={stopAll}
+                  onPointerDown={stopAll}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    mi.onClick();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-[15px] hover:bg-slate-50"
+                >
+                  {mi.label}
+                </button>
+              ))}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
